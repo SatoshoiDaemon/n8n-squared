@@ -2,7 +2,7 @@
 
 n8n-squared é uma base derivada do [n8n](https://github.com/n8n-io/n8n), preparada para self-hosting e distribuição como aplicação Node.js na Square Cloud. Preserva o motor de workflows, o editor visual, os nodes e os formatos de dados da versão-base **2.42.7**.
 
-Esta fundação concentra-se em uma distribuição reproduzível e no funcionamento local. Temas, Developer Mode, integrações Discord e otimizações de memória serão integrados após a validação da base. O trabalho experimental anterior está preservado na referência Git `backup/squared-wip-20261015` e não faz parte desta versão.
+Esta fundação concentra-se em uma distribuição reproduzível e no funcionamento local. Temas, Developer Mode, integrações Discord e otimizações de memória serão integrados após a validação da base.
 
 ## Desenvolvimento
 

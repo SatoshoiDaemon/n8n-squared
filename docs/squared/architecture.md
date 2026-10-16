@@ -12,7 +12,7 @@ O n8n mantém a execução de workflows, a API, o editor Vue, o registro de node
 - O processo de build produz um workspace reduzido com 46 pacotes internos compilados, ZIP e manifesto de verificação. O lockfile de produção permite instalar dependências públicas no ambiente gerenciado. O ZIP precisa passar por um teste em diretório limpo antes de qualquer afirmação de compatibilidade hospedada.
 - O funcionamento local e em outras PaaS continua disponível pelo CLI original e por variáveis `N8N_*`.
 
-Os quatro pilares futuros são Core, DX, Discord e Cloud. A implementação experimental de temas e Developer Mode permanece numa branch de backup até uma revisão própria.
+Os quatro pilares futuros são Core, DX, Discord e Cloud. A implementação experimental de temas e Developer Mode foi preservada em uma referência Git local de backup para revisão futura.
 
 Fixtures de Docker dentro de pacotes de teste e benchmark permanecem quando os próprios testes as utilizam. Eles não participam do build, do ZIP ou da execução na Square Cloud. O processo de distribuição por imagem do upstream foi removido.
 

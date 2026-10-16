@@ -14,7 +14,7 @@ SQUARED_SUBDOMAIN=meu-n8n-squared pnpm build:deploy
 
 O resultado fica em `dist/squarecloud/n8n-squared-squarecloud.zip`. `manifest.json` registra tamanho e SHA-256. `SQUARED_MEMORY_MB` altera `MEMORY` em `squarecloud.app` (padrão: 2048); escolha um valor compatível com o plano e a memória medida. `SQUARED_DISPLAY_NAME` altera o nome exibido. `SQUARED_SUBDOMAIN` define a publicação web; também é possível configurar o domínio no painel.
 
-O empacotamento inclui os pacotes internos já compilados em um workspace reduzido. O lockfile é derivado das versões fixadas na raiz do projeto. O ZIP não inclui `node_modules`, como recomenda a [documentação da Square Cloud](https://squarecloud.app/en/runtimes/nodejs). O gerenciador definido no pacote é pnpm 12.4.2. Antes do envio, o script rejeita um ZIP maior que 100 MiB. A instalação local com `pnpm install --prod --frozen-lockfile` foi validada, mas a instalação hospedada precisa ser confirmada na conta Square Cloud.
+O empacotamento inclui os pacotes internos já compilados em um workspace reduzido. O lockfile é derivado das versões fixadas na raiz do projeto. O ZIP não inclui `node_modules`, como recomenda a [documentação da Square Cloud](https://squarecloud.app/en/runtimes/nodejs). O gerenciador definido no pacote é pnpm 12.4.2. Antes do envio, o script rejeita um ZIP maior que 100 MB. A instalação local com `pnpm install --prod --frozen-lockfile` foi validada, mas a instalação hospedada precisa ser confirmada na conta Square Cloud.
 
 ## Persistência e ambiente
 

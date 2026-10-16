@@ -17,7 +17,7 @@ const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
 const app = join(output, 'app');
 const archive = join(output, 'n8n-squared-squarecloud.zip');
-const maxUploadBytes = 100 * 1024 * 1024;
+const maxUploadBytes = 100_000_000;
 
 function run(command, args, cwd = root, quiet = false) {
 	const result = spawnSync(command, args, {

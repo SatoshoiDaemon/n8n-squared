@@ -19,7 +19,7 @@ Em outro terminal, execute `pnpm dev:fe:editor`. A URL do editor aparece no term
 
 ## Distribuição
 
-`pnpm build:deploy` gera um pacote Node.js com dependências de execução e configuração da Square Cloud. Consulte [instalação na Square Cloud](docs/squared/square-cloud.md) antes de publicar. O pacote usa o Node.js gerenciado pela plataforma; este projeto não constrói nem publica imagens Docker.
+`pnpm build:deploy` gera um pacote Node.js com pacotes internos compilados, lockfile de produção e configuração da Square Cloud. As dependências públicas são instaladas pela plataforma com pnpm. Consulte [instalação na Square Cloud](docs/squared/square-cloud.md) antes de publicar. Este projeto não constrói nem publica imagens Docker.
 
 ## Origem e licenças
 

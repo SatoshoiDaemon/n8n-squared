@@ -1,0 +1,16 @@
+# Validação da fundação
+
+Base: n8n 2.42.7. A validação abaixo foi feita localmente em Node.js 24.19.0 e pnpm 12.4.2, com dados de teste em diretórios temporários isolados.
+
+| Verificação | Resultado |
+| --- | --- |
+| `pnpm install --frozen-lockfile` | Passou |
+| `pnpm build` | Passou; 71 tarefas do Turbo |
+| `pnpm --filter @n8n/config test` | Passou; 235 testes |
+| `pnpm --filter @n8n/config lint` | Passou |
+| `pnpm package:squarecloud` | Passou; 46 pacotes internos, ZIP de 80.834.171 bytes |
+| `pnpm smoke:squarecloud` | Passou; instala o ZIP em diretório limpo, inicia backend, confirma readiness e editor HTTP 200, importa e executa um workflow |
+
+O smoke automatizado cria uma conta proprietária fictícia apenas no banco temporário para permitir a importação e a execução pelo CLI. Ele não usa dados da instância local do usuário.
+
+**Pendente:** deploy real na Square Cloud, instalação gerenciada observada nos logs hospedados, publicação web e persistência após reinicialização. Nenhuma conta ou credencial da Square Cloud foi usada nesta validação. O n8n 2.42.7 emite um aviso de que instalações fora da imagem oficial podem ser descontinuadas em versões futuras; isso não impediu a execução desta base, mas deve ser reavaliado em cada atualização do upstream.

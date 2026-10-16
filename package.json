@@ -10,6 +10,10 @@
   "scripts": {
     "preinstall": "node scripts/block-npm-install.js",
     "build": "turbo run build",
+    "build:deploy": "pnpm build && pnpm package:squarecloud",
+    "package:squarecloud": "node scripts/squared/package-squarecloud.mjs",
+    "smoke:squarecloud": "node scripts/squared/smoke-squarecloud.mjs",
+    "deploy:squarecloud": "node scripts/squared/deploy-squarecloud.mjs",
     "build:unchecked": "turbo run build:unchecked",
     "typecheck": "turbo typecheck",
     "dev": "node scripts/dev-command-removed-notice.mjs",

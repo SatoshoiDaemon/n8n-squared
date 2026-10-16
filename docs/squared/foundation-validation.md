@@ -8,8 +8,9 @@ Base: n8n 2.42.7. A validação abaixo foi feita localmente em Node.js 24.19.0 e
 | `pnpm build` | Passou; 71 tarefas do Turbo |
 | `pnpm --filter @n8n/config test` | Passou; 235 testes |
 | `pnpm --filter @n8n/config lint` | Passou |
-| `pnpm package:squarecloud` | Passou; 46 pacotes internos, ZIP de 80.834.171 bytes |
+| `pnpm package:squarecloud` | Passou; 46 pacotes internos, ZIP de 80.834.428 bytes (SHA-256: `1608868e6bb11686f1728a50965b72e7b07a4f760415e7b5590f621c0af52e11`) |
 | `pnpm smoke:squarecloud` | Passou; instala o ZIP em diretório limpo, inicia backend, confirma readiness e editor HTTP 200, importa e executa um workflow |
+| `pnpm lint` | Interrompido por instabilidade local associada à execução do ESLint; não há resultado de lint completo. Não repetir neste ambiente sem nova orientação. |
 
 O smoke automatizado cria uma conta proprietária fictícia apenas no banco temporário para permitir a importação e a execução pelo CLI. Ele não usa dados da instância local do usuário.
 

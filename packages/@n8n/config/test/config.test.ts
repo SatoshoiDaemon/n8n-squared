@@ -49,6 +49,7 @@ describe('GlobalConfig', () => {
 	});
 
 	const defaultConfig = {
+		squared: { runtimeProfile: 'standard' },
 		path: '/',
 		host: 'localhost',
 		port: 5678,
@@ -745,6 +746,11 @@ describe('GlobalConfig', () => {
 		expect(defaultConfig).toMatchObject(config);
 		expect(config).toMatchObject(defaultConfig);
 		expect(readFileSyncMock).not.toHaveBeenCalled();
+	});
+
+	it('should parse the Squared runtime profile from the environment', () => {
+		process.env = { SQUARED_RUNTIME_PROFILE: 'developer' };
+		expect(Container.get(GlobalConfig).squared.runtimeProfile).toBe('developer');
 	});
 
 	it('should parse N8N_AGENTS_TRACING_ENABLED from env variables', () => {

@@ -48,6 +48,7 @@ import { SchedulerConfig } from './configs/scheduler.config';
 import { SecurityConfig } from './configs/security.config';
 import { SentryConfig } from './configs/sentry.config';
 import { SsoConfig } from './configs/sso.config';
+import { SquaredConfig } from './configs/squared.config';
 import { SsrfProtectionConfig } from './configs/ssrf-protection.config';
 import { TagsConfig } from './configs/tags.config';
 import { TemplatesConfig } from './configs/templates.config';
@@ -59,6 +60,7 @@ import { WorkflowsConfig } from './configs/workflows.config';
 import { Config, Env, Nested } from './decorators';
 
 export { Config, Env, Nested } from './decorators';
+export { SquaredConfig } from './configs/squared.config';
 export { AiConfig } from './configs/ai.config';
 export { DatabaseConfig, SqliteConfig } from './configs/database.config';
 export { InstanceSettingsConfig } from './configs/instance-settings-config';
@@ -122,6 +124,9 @@ export type Protocol = z.infer<typeof protocolSchema>;
 
 @Config
 export class GlobalConfig {
+	@Nested
+	squared: SquaredConfig;
+
 	@Nested
 	auth: AuthConfig;
 

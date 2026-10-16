@@ -1,0 +1,334 @@
+import type { Ref } from 'vue';
+import { ref } from 'vue';
+import { defineStore } from 'pinia';
+import { useStorage } from '@n8n/composables/useStorage';
+import { useUsersStore } from '@n8n/stores/users.store';
+import { useRootStore } from '@n8n/stores/useRootStore';
+import { useSettingsStore } from '@n8n/stores/settings.store';
+import type { FeatureFlagPayloads, FeatureFlags, IDataObject } from 'n8n-workflow';
+import { EXPERIMENTS_TO_TRACK, LOCAL_STORAGE_EXPERIMENT_OVERRIDES } from '@/app/constants';
+import { TELEMETRY_EVENT } from '@n8n/telemetry';
+import { useDebounce } from '@n8n/composables/useDebounce';
+import { useTelemetry } from '@n8n/composables/useTelemetry';
+
+const POSTHOG_GROUP_TYPE_INSTANCE = 'company';
+
+export type PosthogStore = ReturnType<typeof usePostHog>;
+
+type FeatureFlagOverride = {
+	value: string | boolean;
+	payload?: FeatureFlagPayloads[string];
+};
+
+export const usePostHog = defineStore('posthog', () => {
+	const usersStore = useUsersStore();
+	const settingsStore = useSettingsStore();
+	const telemetry = useTelemetry();
+	const rootStore = useRootStore();
+	const { debounce } = useDebounce();
+
+	const featureFlags: Ref<FeatureFlags | null> = ref(null);
+	const featureFlagPayloads: Ref<FeatureFlagPayloads | null> = ref(null);
+	const trackedDemoExp: Ref<FeatureFlags> = ref({});
+	const trackedExposures: Ref<FeatureFlags> = ref({});
+	const pendingFeatureFlagsEvaluation = ref(false);
+
+	const overrides: Ref<Record<string, FeatureFlagOverride>> = ref({});
+	let featureFlagsWaitPromise: Promise<FeatureFlags | null> | null = null;
+	let resolveFeatureFlagsWait: ((flags: FeatureFlags | null) => void) | null = null;
+
+	const clearFeatureFlagsWait = () => {
+		featureFlagsWaitPromise = null;
+		resolveFeatureFlagsWait = null;
+	};
+
+	const resolveFeatureFlagsWaiters = (flags: FeatureFlags | null) => {
+		pendingFeatureFlagsEvaluation.value = false;
+
+		if (resolveFeatureFlagsWait) {
+			resolveFeatureFlagsWait(flags);
+		}
+
+		clearFeatureFlagsWait();
+	};
+
+	const reset = () => {
+		window.posthog?.reset?.();
+		featureFlags.value = null;
+		featureFlagPayloads.value = null;
+		trackedDemoExp.value = {};
+		trackedExposures.value = {};
+		pendingFeatureFlagsEvaluation.value = false;
+		clearFeatureFlagsWait();
+	};
+
+	const getVariant = (experiment: keyof FeatureFlags): FeatureFlags[keyof FeatureFlags] => {
+		return overrides.value[experiment]?.value ?? featureFlags.value?.[experiment];
+	};
+
+	const getFeatureFlagPayload = (flag: string) => {
+		const override = overrides.value[flag];
+		return override ? override.payload : featureFlagPayloads.value?.[flag];
+	};
+
+	const isVariantEnabled = (experiment: string, variant: string) => {
+		return getVariant(experiment) === variant;
+	};
+
+	/**
+	 * Checks if the given feature flag is enabled. Should only be used for boolean flags
+	 */
+	const isFeatureEnabled = (experiment: keyof FeatureFlags) => {
+		return getVariant(experiment) === true;
+	};
+
+	const hasPendingFeatureFlags = () => pendingFeatureFlagsEvaluation.value;
+
+	const waitForFeatureFlags = async () => {
+		if (!pendingFeatureFlagsEvaluation.value) {
+			return featureFlags.value;
+		}
+
+		if (!featureFlagsWaitPromise) {
+			featureFlagsWaitPromise = new Promise((resolve) => {
+				resolveFeatureFlagsWait = resolve;
+			});
+		}
+
+		return await featureFlagsWaitPromise;
+	};
+
+	if (!window.featureFlags) {
+		// for testing
+		const cachedOverrides = useStorage(LOCAL_STORAGE_EXPERIMENT_OVERRIDES).value;
+		if (cachedOverrides) {
+			try {
+				console.log('Overriding feature flags', cachedOverrides);
+				const parsedOverrides: Record<string, FeatureFlagOverride | string | boolean> =
+					JSON.parse(cachedOverrides);
+				if (typeof parsedOverrides === 'object') {
+					overrides.value = Object.fromEntries(
+						Object.entries(parsedOverrides).map(([name, override]) => [
+							name,
+							typeof override === 'object' ? override : { value: override },
+						]),
+					);
+				}
+			} catch (e) {
+				console.log('Could not override experiment', e);
+			}
+		}
+
+		window.featureFlags = {
+			// since features are evaluated serverside, regular posthog mechanism to override clientside does not work
+			override: (name: string, value: string | boolean, payload?: FeatureFlagPayloads[string]) => {
+				overrides.value[name] = {
+					value,
+					...(payload !== undefined && payload !== null ? { payload } : {}),
+				};
+				try {
+					useStorage(LOCAL_STORAGE_EXPERIMENT_OVERRIDES).value = JSON.stringify(overrides.value);
+				} catch (e) {}
+			},
+
+			getVariant,
+			getAll: () => featureFlags.value ?? {},
+		};
+	}
+
+	const groupIdentify = (groupKey: string, instanceId: string) => {
+		window.posthog?.group?.(groupKey, instanceId);
+	};
+
+	const identify = () => {
+		const instanceId = rootStore.instanceId;
+		const user = usersStore.currentUser;
+		if (!user) return;
+
+		const versionCli = rootStore.versionCli;
+		const traits: Record<string, string | number> = {
+			instance_id: instanceId,
+			version_cli: versionCli,
+		};
+
+		if (typeof user.createdAt === 'string') {
+			traits.created_at_timestamp = new Date(user.createdAt).getTime();
+		}
+
+		window.posthog?.identify?.(`${instanceId}#${user.id}`, traits);
+	};
+
+	const trackExperiment = (featFlags: FeatureFlags, name: string) => {
+		const variant = featFlags[name];
+		if (!variant || trackedDemoExp.value[name] === variant) {
+			return;
+		}
+
+		telemetry.track(TELEMETRY_EVENT.PLATFORM.USER_IS_PART_OF_EXPERIMENT, {
+			name,
+			variant,
+		});
+
+		trackedDemoExp.value[name] = variant;
+	};
+
+	const trackExperiments = (featFlags: FeatureFlags) => {
+		EXPERIMENTS_TO_TRACK.forEach((name) => trackExperiment(featFlags, name));
+	};
+	const trackExperimentsDebounced = debounce(trackExperiments, {
+		debounceTime: 2000,
+	});
+
+	const init = (
+		evaluatedFeatureFlags?: FeatureFlags,
+		evaluatedFeatureFlagPayloads?: FeatureFlagPayloads,
+	) => {
+		const hasServerFlags =
+			evaluatedFeatureFlags !== undefined && Object.keys(evaluatedFeatureFlags).length > 0;
+
+		// Server-evaluated flags include env-var overrides, so they must be
+		// available even when PostHog is disabled and the SDK never loads.
+		if (hasServerFlags) {
+			featureFlags.value = evaluatedFeatureFlags;
+			featureFlagPayloads.value = evaluatedFeatureFlagPayloads ?? {};
+			resolveFeatureFlagsWaiters(featureFlags.value);
+		}
+
+		if (!window.posthog) {
+			return;
+		}
+
+		const config = settingsStore.settings.posthog;
+		if (!config.enabled) {
+			return;
+		}
+
+		const userId = usersStore.currentUserId;
+		if (!userId) {
+			return;
+		}
+
+		const instanceId = rootStore.instanceId;
+		const distinctId = `${instanceId}#${userId}`;
+
+		const options: Parameters<typeof window.posthog.init>[1] = {
+			api_host: settingsStore.settings.posthog.proxy,
+			autocapture: config.autocapture,
+			disable_session_recording: config.disableSessionRecording,
+			debug: false, // Enables console logs for debugging reasons
+			session_recording: {
+				maskAllInputs: false,
+			},
+			...(!config.disableSessionRecording && {
+				tracing_headers: [new URL(rootStore.restUrl, window.location.origin).hostname],
+			}),
+		};
+
+		if (hasServerFlags) {
+			options.bootstrap = {
+				distinctID: distinctId,
+				// The bootstrapped id is a logged-in user, not a device. Without this the
+				// initial $pageview and the first recording snapshots are anonymous events.
+				isIdentifiedID: true,
+				featureFlags: evaluatedFeatureFlags,
+				...(evaluatedFeatureFlagPayloads && {
+					featureFlagPayloads: evaluatedFeatureFlagPayloads,
+				}),
+			};
+			// Flags are server-evaluated and bootstrapped; without this, identify()/group()
+			// in the loaded callback each trigger a billed /flags refetch of values the
+			// client already has.
+			options.advanced_disable_feature_flags = true;
+		}
+
+		const identifyUserAndInstance = () => {
+			identify();
+			groupIdentify(POSTHOG_GROUP_TYPE_INSTANCE, instanceId);
+		};
+
+		if (window.posthog.__loaded) {
+			// init() is a no-op once the SDK is loaded, so a login without a page reload
+			// (enforced MFA) would otherwise leave the session on the anonymous id that
+			// the logout hook's reset() created.
+			identifyUserAndInstance();
+		} else {
+			window.posthog.init(config.apiKey, {
+				...options,
+				loaded: identifyUserAndInstance,
+			});
+		}
+
+		if (hasServerFlags) {
+			// does not need to be debounced really, but tracking does not fire without delay on page load
+			trackExperimentsDebounced(evaluatedFeatureFlags);
+		} else {
+			// depend on client side evaluation if serverside evaluation fails
+			pendingFeatureFlagsEvaluation.value = true;
+			window.posthog?.onFeatureFlags?.((_, map: FeatureFlags) => {
+				const payloads: FeatureFlagPayloads = {};
+				for (const key of Object.keys(map)) {
+					const payload = window.posthog?.getFeatureFlagPayload?.(key);
+					if (payload !== undefined && payload !== null) payloads[key] = payload;
+				}
+
+				featureFlags.value = map;
+				featureFlagPayloads.value = payloads;
+				resolveFeatureFlagsWaiters(featureFlags.value);
+
+				// must be debounced because it is called multiple times by posthog
+				trackExperimentsDebounced(featureFlags.value);
+			});
+		}
+	};
+
+	const setMetadata = (metadata: IDataObject, target: 'user' | 'events') => {
+		if (typeof window.posthog?.people?.set !== 'function') return;
+		if (typeof window.posthog?.register !== 'function') return;
+
+		if (target === 'user') {
+			window.posthog?.people?.set(metadata);
+		} else if (target === 'events') {
+			window.posthog?.register(metadata);
+		}
+	};
+
+	const capture = (event: string, properties: IDataObject = {}) => {
+		if (typeof window.posthog?.capture === 'function') {
+			window.posthog.capture(event, properties);
+		}
+	};
+
+	/**
+	 * Fires PostHog's native exposure event for an experiment so results can use
+	 * built-in exposure analysis. Uses getVariant() so the recorded variant is the
+	 * one the user actually experienced, including local overrides. Deduped per
+	 * flag+variant; cleared on reset().
+	 */
+	const trackExposure = (experiment: string) => {
+		const variant = getVariant(experiment);
+		if (variant === undefined || variant === false) return;
+		if (trackedExposures.value[experiment] === variant) return;
+		capture('$feature_flag_called', {
+			$feature_flag: experiment,
+			$feature_flag_response: variant,
+		});
+		trackedExposures.value[experiment] = variant;
+	};
+
+	return {
+		init,
+		isFeatureEnabled,
+		isVariantEnabled,
+		getVariant,
+		getFeatureFlagPayload,
+		hasPendingFeatureFlags,
+		waitForFeatureFlags,
+		reset,
+		identify,
+		groupIdentify,
+		setMetadata,
+		capture,
+		trackExposure,
+		overrides,
+	};
+});

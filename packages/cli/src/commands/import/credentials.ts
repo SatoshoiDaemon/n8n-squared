@@ -1,0 +1,623 @@
+import { credentialDescriptionSchema } from '@n8n/api-types';
+import {
+	CredentialsEntity,
+	CredentialsRepository,
+	DbLock,
+	DbLockService,
+	Project,
+	User,
+	SharedCredentials,
+	SharedCredentialsRepository,
+	ProjectRepository,
+	UserRepository,
+	GLOBAL_OWNER_ROLE,
+	type OperationContext,
+} from '@n8n/db';
+import { Command, type PolicyCleared } from '@n8n/decorators';
+import { Container } from '@n8n/di';
+import { PROJECT_OWNER_ROLE_SLUG } from '@n8n/permissions';
+import type { EntityManager } from '@n8n/typeorm';
+import glob from 'fast-glob';
+import fs from 'fs';
+import omit from 'lodash/omit';
+import pick from 'lodash/pick';
+import { Cipher } from 'n8n-core';
+import { jsonParse, UserError, type ICredentialDataDecryptedObject } from 'n8n-workflow';
+import { z } from 'zod';
+
+import { CredentialDescriptionsService } from '@/credentials/credential-descriptions.service';
+import { UM_FIX_INSTRUCTION } from '@/constants';
+import { CredentialsService } from '@/credentials/credentials.service';
+import { PolicyEnforcementService } from '@/policy/policy-enforcement.service';
+import { PolicyViolationError } from '@/policy/policy-violation.error';
+
+import { BaseCommand } from '../base-command';
+
+type ReadCredentialsOptions = {
+	inputPath: string;
+	separate: boolean;
+	include?: string[];
+	exclude?: string[];
+};
+
+const flagsSchema = z.object({
+	input: z
+		.string()
+		.alias('i')
+		.describe('Input file name or directory if --separate is used')
+		.optional(),
+	separate: z
+		.boolean()
+		.default(false)
+		.describe('Imports *.json files from directory provided by --input'),
+	include: z
+		.string()
+		.describe('Comma-separated credential properties to include during import')
+		.optional(),
+	exclude: z
+		.string()
+		.describe('Comma-separated credential properties to exclude during import')
+		.optional(),
+	userId: z
+		.string()
+		.describe('The ID of the user to assign the imported credentials to')
+		.optional(),
+	projectId: z
+		.string()
+		.describe('The ID of the project to assign the imported credential to')
+		.optional(),
+});
+
+type ImportableCredentialProperty = Exclude<
+	Extract<keyof CredentialsEntity, string>,
+	'shared' | 'toJSON' | 'generateId' | 'setUpdateDate' | 'pendingAuthorizationExpiresAt'
+>;
+
+const isCredentialData = (data: unknown): data is ICredentialDataDecryptedObject =>
+	typeof data === 'object' && data !== null && !Array.isArray(data);
+
+type ExistingCredential = Pick<CredentialsEntity, 'id' | 'type' | 'usageScope'>;
+
+/** A credential the policy cleared, with what the write needs: a concrete type and the clearance. */
+type AdmittedCredential = {
+	credential: Partial<CredentialsEntity> & Pick<CredentialsEntity, 'type'>;
+	existing: ExistingCredential | null;
+	cleared: PolicyCleared<'contentImport'>;
+};
+
+type SkippedCredential = { id?: string; name?: string; violations: string[] };
+
+@Command({
+	name: 'import:credentials',
+	description: 'Import credentials',
+	examples: [
+		'--input=file.json',
+		'--separate --input=backups/latest/',
+		'--input=file.json --include=id,name,type,data',
+		'--input=file.json --exclude=createdAt,updatedAt',
+		'--input=file.json --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
+		'--input=file.json --projectId=Ox8O54VQrmBrb4qL',
+		'--separate --input=backups/latest/ --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
+	],
+	flagsSchema,
+})
+export class ImportCredentialsCommand extends BaseCommand<z.infer<typeof flagsSchema>> {
+	async run(): Promise<void> {
+		const { flags } = this;
+
+		if (!flags.input) {
+			this.logger.info('An input file or directory with --input must be provided');
+			return;
+		}
+
+		if (flags.separate) {
+			if (fs.existsSync(flags.input)) {
+				if (!fs.lstatSync(flags.input).isDirectory()) {
+					this.logger.info('The argument to --input must be a directory');
+					return;
+				}
+			}
+		}
+
+		if (flags.projectId && flags.userId) {
+			throw new UserError(
+				'You cannot use `--userId` and `--projectId` together. Use one or the other.',
+			);
+		}
+
+		if (flags.include && flags.exclude) {
+			throw new UserError(
+				'You cannot use `--include` and `--exclude` together. Use one or the other.',
+			);
+		}
+
+		const include = this.parseCredentialProperties(flags.include, '--include');
+		const exclude = this.parseCredentialProperties(flags.exclude, '--exclude');
+
+		const credentials = await this.readCredentials({
+			inputPath: flags.input,
+			separate: flags.separate,
+			include,
+			exclude,
+		});
+
+		// Admission runs before the lock: the policy check reads its scopes through its own pool
+		// connection, and with a single-connection pool it would wait on the lock transaction forever.
+		const project = await this.getProject(flags.userId, flags.projectId);
+
+		const admitted: AdmittedCredential[] = [];
+		const skipped: SkippedCredential[] = [];
+		for (const credential of credentials) {
+			const outcome = await this.admitCredential(credential, project);
+			if ('cleared' in outcome) admitted.push(outcome);
+			else skipped.push(outcome);
+		}
+
+		await Container.get(DbLockService).withLock(
+			DbLock.INSTANCE_AI_SETTINGS,
+			async (transactionManager, ctx) => {
+				const result = await this.checkRelations(
+					transactionManager,
+					credentials,
+					project.id,
+					flags,
+				);
+
+				if (!result.success) {
+					throw new UserError(result.message);
+				}
+
+				for (const entry of admitted) {
+					await this.storeCredential(transactionManager, entry, project, ctx);
+				}
+			},
+		);
+
+		this.reportSuccess(credentials.length - skipped.length);
+		this.reportSkipped(skipped);
+	}
+
+	async catch(error: Error) {
+		this.logger.error(
+			'An error occurred while importing credentials. See log messages for details.',
+		);
+		this.logger.error(error.message);
+	}
+
+	private reportSuccess(total: number) {
+		this.logger.info(
+			`Successfully imported ${total} ${total === 1 ? 'credential.' : 'credentials.'}`,
+		);
+	}
+
+	private reportSkipped(skipped: SkippedCredential[]) {
+		if (skipped.length === 0) return;
+
+		this.logger.warn(
+			`Skipped ${skipped.length} ${skipped.length === 1 ? 'credential' : 'credentials'} blocked by policy:`,
+		);
+		for (const { id, name, violations } of skipped) {
+			this.logger.warn(`  - ${name ?? id ?? 'unknown'}: ${violations.join(', ')}`);
+		}
+	}
+
+	/**
+	 * Everything that must be known before the write, resolved with plain reads of committed
+	 * state: the effective type, the project whose policy applies, and the policy decision itself.
+	 */
+	private async admitCredential(
+		credential: Partial<CredentialsEntity>,
+		project: Project,
+	): Promise<AdmittedCredential | SkippedCredential> {
+		await Container.get(CredentialDescriptionsService).stripIfDisabled(credential);
+		if (credential.description !== undefined) {
+			const parsed = credentialDescriptionSchema.safeParse(credential.description);
+
+			if (!parsed.success) {
+				throw new UserError(
+					`Credential "${credential.id ?? credential.name ?? 'unknown'}": ${parsed.error.issues[0].message}`,
+				);
+			}
+
+			credential.description = parsed.data;
+		}
+
+		// UsageScope is instance-local state; imports never change it for existing credentials.
+		let existing: ExistingCredential | null = null;
+		if (credential.id) {
+			existing = await Container.get(CredentialsRepository).findOne({
+				where: { id: credential.id },
+				select: ['id', 'usageScope', 'type'],
+			});
+			if (existing) {
+				credential.usageScope = existing.usageScope;
+				if (
+					existing.usageScope === 'instance' &&
+					credential.type !== undefined &&
+					credential.type !== existing.type
+				) {
+					throw new UserError(
+						'Provider connection type cannot be changed. Create a new connection instead.',
+					);
+				}
+			}
+		}
+		credential.usageScope ??= 'project';
+		// Only the OAuth flow that created the row may hold it pending; an imported copy has no such flow.
+		credential.pendingAuthorizationExpiresAt = null;
+
+		// The payload may omit `type` on an update that doesn't change it (e.g. --exclude=type);
+		// the policy check and the sealed write both need a concrete type to bind to.
+		const type = credential.type ?? existing?.type;
+		if (type === undefined) {
+			throw new UserError(
+				`Credential "${credential.id ?? credential.name ?? 'unknown'}" is missing a type`,
+			);
+		}
+		credential.type = type;
+
+		// An existing credential keeps its owner project, so its policy applies, not the batch target.
+		let landingProjectId = project.id;
+		if (existing) {
+			const ownerProject = await Container.get(
+				SharedCredentialsRepository,
+			).findCredentialOwningProject(existing.id);
+			if (ownerProject) landingProjectId = ownerProject.id;
+		}
+
+		let cleared: PolicyCleared<'contentImport'>;
+		try {
+			cleared = await Container.get(PolicyEnforcementService).enforceContentImport({
+				credential: { id: credential.id ?? null, type },
+				projectId: credential.usageScope === 'instance' ? null : landingProjectId,
+				transport: 'cli',
+			});
+		} catch (error) {
+			if (!(error instanceof PolicyViolationError)) throw error;
+
+			this.logger.warn(
+				`Skipping credential ${credential.id ?? credential.name ?? 'unknown'}: blocked by policy`,
+			);
+
+			return {
+				id: credential.id,
+				name: credential.name,
+				violations: error.violations.map((violation) => violation.message),
+			};
+		}
+
+		return { credential: { ...credential, type }, existing, cleared };
+	}
+
+	private async storeCredential(
+		transactionManager: EntityManager,
+		{ credential, existing, cleared }: AdmittedCredential,
+		project: Project,
+		ctx: OperationContext,
+	): Promise<void> {
+		// Validated after the policy gate, so a blocked provider connection is skipped even when
+		// its stored data can't be read.
+		if (credential.usageScope === 'instance') {
+			if (
+				credential.isGlobal ||
+				credential.isResolvable ||
+				credential.isManaged ||
+				credential.resolvableAllowFallback ||
+				credential.resolverId
+			) {
+				throw new UserError(
+					'Provider connections cannot be global, managed, or dynamically resolved',
+				);
+			}
+			Object.assign(credential, {
+				isGlobal: false,
+				isResolvable: false,
+				isManaged: false,
+				resolvableAllowFallback: false,
+				resolverId: null,
+			});
+			await this.validateInstanceCredentialData(transactionManager, credential, existing, ctx);
+		}
+
+		const credentialsId = await Container.get(CredentialsRepository).upsertImportedContent(
+			credential,
+			{ ...ctx, policyCleared: cleared },
+		);
+
+		if (credential.usageScope === 'instance') {
+			// Instance credentials are instance-owned and must not retain project sharing rows.
+			await transactionManager.delete(SharedCredentials, { credentialsId });
+			return;
+		}
+
+		const sharingExists = await transactionManager.existsBy(SharedCredentials, {
+			credentialsId,
+			role: 'credential:owner',
+		});
+
+		if (!sharingExists) {
+			await transactionManager.upsert(
+				SharedCredentials,
+				{
+					credentialsId,
+					role: 'credential:owner',
+					projectId: project.id,
+				},
+				['credentialsId', 'projectId'],
+			);
+		}
+	}
+
+	private async validateInstanceCredentialData(
+		transactionManager: EntityManager,
+		credential: Partial<CredentialsEntity>,
+		existing: ExistingCredential | null,
+		ctx: OperationContext,
+	) {
+		let data: unknown = credential.data;
+		if (data === undefined && credential.id) {
+			data = (
+				await transactionManager.findOne(CredentialsEntity, {
+					where: { id: credential.id },
+					select: { data: true },
+				})
+			)?.data;
+		}
+		if (data === undefined) return;
+		if (data === null || data === '') {
+			throw new UserError('Provider connection data cannot be empty');
+		}
+
+		const decrypted =
+			typeof data === 'string'
+				? jsonParse<unknown>(await Container.get(Cipher).decryptV2(data))
+				: data;
+		if (!isCredentialData(decrypted)) {
+			throw new UserError('Provider connection data must be a JSON object');
+		}
+		const credentialsService = Container.get(CredentialsService);
+		if (existing?.usageScope === 'instance') {
+			await credentialsService.validateInstanceCredentialUpdate(
+				existing,
+				decrypted,
+				undefined,
+				ctx,
+			);
+		} else {
+			credentialsService.validateInstanceCredentialData(decrypted);
+		}
+	}
+
+	private async checkRelations(
+		transactionManager: EntityManager,
+		credentials: Array<Pick<Partial<CredentialsEntity>, 'id'>>,
+		targetProjectId: string,
+		{ userId, projectId }: { userId?: string; projectId?: string },
+	) {
+		// The credential is not supposed to be re-owned.
+		if (!projectId && !userId) {
+			return {
+				success: true as const,
+				message: undefined,
+			};
+		}
+
+		for (const credential of credentials) {
+			if (credential.id === undefined) {
+				continue;
+			}
+
+			if (!(await this.credentialExists(transactionManager, credential.id))) {
+				continue;
+			}
+
+			const { user, project: ownerProject } = await this.getCredentialOwner(
+				transactionManager,
+				credential.id,
+			);
+
+			if (!ownerProject) {
+				continue;
+			}
+
+			if (ownerProject.id !== targetProjectId) {
+				const currentOwner =
+					ownerProject.type === 'personal'
+						? `the user with the ID "${user.id}"`
+						: `the project with the ID "${ownerProject.id}"`;
+				const newOwner = userId
+					? // The user passed in `--userId`, so let's use the user ID in the error
+						// message as opposed to the project ID.
+						`the user with the ID "${userId}"`
+					: `the project with the ID "${projectId}"`;
+
+				return {
+					success: false as const,
+					message: `The credential with ID "${credential.id}" is already owned by ${currentOwner}. It can't be re-owned by ${newOwner}.`,
+				};
+			}
+		}
+
+		return {
+			success: true as const,
+			message: undefined,
+		};
+	}
+
+	private async readCredentials(
+		options: ReadCredentialsOptions,
+	): Promise<Array<Partial<CredentialsEntity>>> {
+		const { separate, include, exclude } = options;
+		const cipher = Container.get(Cipher);
+		let { inputPath } = options;
+
+		if (process.platform === 'win32') {
+			inputPath = inputPath.replace(/\\/g, '/');
+		}
+
+		let credentials: Array<Partial<CredentialsEntity>>;
+
+		if (separate) {
+			const files = await glob('*.json', {
+				cwd: inputPath,
+				absolute: true,
+			});
+
+			credentials = files.map((file) =>
+				jsonParse<Partial<CredentialsEntity>>(fs.readFileSync(file, { encoding: 'utf8' })),
+			);
+		} else {
+			const credentialsUnchecked = jsonParse<Array<Partial<CredentialsEntity>>>(
+				fs.readFileSync(inputPath, { encoding: 'utf8' }),
+			);
+
+			if (!Array.isArray(credentialsUnchecked)) {
+				throw new UserError(
+					'File does not seem to contain credentials. Make sure the credentials are contained in an array.',
+				);
+			}
+
+			credentials = credentialsUnchecked;
+		}
+
+		const knownProperties = new Set(credentials.flatMap((credential) => Object.keys(credential)));
+		this.warnOnUnknownProperties(include, knownProperties, '--include');
+		this.warnOnUnknownProperties(exclude, knownProperties, '--exclude');
+
+		return await Promise.all(
+			credentials.map(async (credential) => {
+				const filteredCredential = this.filterCredentialProperties(credential, include, exclude);
+				if (isCredentialData(filteredCredential.data)) {
+					// plain data / decrypted input. Should be encrypted first.
+					filteredCredential.data = await cipher.encryptV2(filteredCredential.data);
+				}
+
+				return filteredCredential;
+			}),
+		);
+	}
+
+	private parseCredentialProperties(
+		value: string | undefined,
+		flagName: '--include' | '--exclude',
+	) {
+		if (!value) return undefined;
+
+		const propertyCandidates = value.split(',');
+		const trimmedProperties = propertyCandidates.map((property) => property.trim());
+		const nonEmptyProperties = trimmedProperties.filter(Boolean);
+		const uniqueProperties = Array.from(new Set(nonEmptyProperties));
+
+		if (uniqueProperties.length === 0) {
+			throw new UserError(`${flagName} must contain at least one property name.`);
+		}
+
+		return uniqueProperties;
+	}
+
+	private warnOnUnknownProperties(
+		properties: string[] | undefined,
+		knownProperties: Set<string>,
+		flagName: '--include' | '--exclude',
+	) {
+		if (!properties?.length) return;
+
+		const unknownProperties = properties.filter((property) => !knownProperties.has(property));
+		if (unknownProperties.length === 0) return;
+
+		this.logger.warn(
+			`Ignoring unknown properties from ${flagName}: ${unknownProperties.join(', ')}`,
+		);
+	}
+
+	private filterCredentialProperties(
+		credential: Partial<CredentialsEntity>,
+		include?: string[],
+		exclude?: string[],
+	): Partial<CredentialsEntity> {
+		if (include?.length) {
+			const includeProperties = include.filter((property) =>
+				this.isCredentialPropertyImportable(property),
+			);
+			if (includeProperties.length === 0) {
+				throw new UserError('No importable properties found. Please check the --include flag.');
+			}
+			return pick(credential, includeProperties);
+		}
+
+		if (exclude?.length) {
+			const excludeProperties = exclude.filter((property) =>
+				this.isCredentialPropertyImportable(property),
+			);
+			return omit(credential, excludeProperties);
+		}
+
+		return credential;
+	}
+
+	private isCredentialPropertyImportable(
+		property: string,
+	): property is ImportableCredentialProperty {
+		const importableProperties = {
+			createdAt: true,
+			updatedAt: true,
+			id: true,
+			name: true,
+			description: true,
+			data: true,
+			type: true,
+			isManaged: true,
+			isGlobal: true,
+			isResolvable: true,
+			resolvableAllowFallback: true,
+			resolverId: true,
+			usageScope: true,
+		} satisfies Record<ImportableCredentialProperty, true>;
+
+		return property in importableProperties;
+	}
+
+	private async getCredentialOwner(transactionManager: EntityManager, credentialsId: string) {
+		const sharedCredential = await transactionManager.findOne(SharedCredentials, {
+			where: { credentialsId, role: 'credential:owner' },
+			relations: { project: true },
+		});
+
+		if (sharedCredential && sharedCredential.project.type === 'personal') {
+			const user = await transactionManager.findOneByOrFail(User, {
+				projectRelations: {
+					role: { slug: PROJECT_OWNER_ROLE_SLUG },
+					projectId: sharedCredential.projectId,
+				},
+			});
+
+			return { user, project: sharedCredential.project };
+		}
+
+		return {};
+	}
+
+	private async credentialExists(transactionManager: EntityManager, credentialId: string) {
+		return await transactionManager.existsBy(CredentialsEntity, { id: credentialId });
+	}
+
+	private async getProject(userId?: string, projectId?: string) {
+		if (projectId) {
+			return await Container.get(ProjectRepository).findOneByOrFail({ id: projectId });
+		}
+
+		if (!userId) {
+			const owner = await Container.get(UserRepository).findOneBy({
+				role: {
+					slug: GLOBAL_OWNER_ROLE.slug,
+				},
+			});
+			if (!owner) {
+				throw new UserError(`Failed to find owner. ${UM_FIX_INSTRUCTION}`);
+			}
+			userId = owner.id;
+		}
+
+		return await Container.get(ProjectRepository).getPersonalProjectForUserOrFail(userId);
+	}
+}

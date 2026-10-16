@@ -1,0 +1,34 @@
+name: Squared CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @n8n/config lint
+      - run: pnpm --filter @n8n/config test
+      - run: pnpm package:squarecloud
+      - run: unzip -tqq dist/squarecloud/n8n-squared-squarecloud.zip
+      - run: pnpm smoke:squarecloud
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n8n-squared-squarecloud
+          path: |
+            dist/squarecloud/n8n-squared-squarecloud.zip
+            dist/squarecloud/manifest.json

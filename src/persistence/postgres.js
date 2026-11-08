@@ -23,6 +23,7 @@ export class PostgresStore {
 			 SET status = 'abandoned', error = 'Process restarted before execution finished', finished_at = now()
 			 WHERE status IN ('queued', 'running')`,
 		);
+		await this.deleteExpiredSessions(Date.now());
 	}
 
 	async close() {
@@ -106,6 +107,11 @@ export class PostgresStore {
 		return rows[0] ? executionRow(rows[0]) : null;
 	}
 
+	async deleteExecution(id) {
+		const result = await this.pool.query('DELETE FROM squared_executions WHERE id = $1', [id]);
+		return result.rowCount > 0;
+	}
+
 	async listExecutions(limit = 50) {
 		const { rows } = await this.pool.query(
 			'SELECT * FROM squared_executions ORDER BY created_at DESC LIMIT $1',
@@ -144,6 +150,47 @@ export class PostgresStore {
 	async deleteCredential(id) {
 		const result = await this.pool.query('DELETE FROM squared_credentials WHERE id = $1', [id]);
 		return result.rowCount > 0;
+	}
+
+	async getAdmin() {
+		const { rows } = await this.pool.query(
+			"SELECT admin_id, email, password_hash, created_at FROM squared_admins WHERE admin_id = 'owner'",
+		);
+		return rows[0] ? { id: rows[0].admin_id, email: rows[0].email, passwordHash: rows[0].password_hash, createdAt: rows[0].created_at } : null;
+	}
+
+	async createAdmin({ email, passwordHash }) {
+		const { rows } = await this.pool.query(
+			"INSERT INTO squared_admins (admin_id, email, password_hash) VALUES ('owner', $1, $2) ON CONFLICT (admin_id) DO NOTHING RETURNING admin_id",
+			[email, passwordHash],
+		);
+		return rows.length === 1;
+	}
+
+	async createSession({ tokenHash, expiresAt }) {
+		await this.pool.query(
+			"INSERT INTO squared_sessions (token_hash, admin_id, expires_at) VALUES ($1, 'owner', $2)",
+			[tokenHash, new Date(expiresAt)],
+		);
+	}
+
+	async getSession(tokenHash, now = Date.now()) {
+		const { rows } = await this.pool.query(
+			`SELECT s.token_hash, s.expires_at, a.admin_id, a.email
+			 FROM squared_sessions s JOIN squared_admins a ON a.admin_id = s.admin_id
+			 WHERE s.token_hash = $1 AND s.expires_at > $2`,
+			[tokenHash, new Date(now)],
+		);
+		return rows[0] ? { tokenHash: rows[0].token_hash, expiresAt: rows[0].expires_at, adminId: rows[0].admin_id, email: rows[0].email } : null;
+	}
+
+	async deleteSession(tokenHash) {
+		const result = await this.pool.query('DELETE FROM squared_sessions WHERE token_hash = $1', [tokenHash]);
+		return result.rowCount > 0;
+	}
+
+	async deleteExpiredSessions(now = Date.now()) {
+		await this.pool.query('DELETE FROM squared_sessions WHERE expires_at <= $1', [new Date(now)]);
 	}
 }
 

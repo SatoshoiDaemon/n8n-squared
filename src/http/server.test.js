@@ -1,70 +1,91 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { AdminAuthService } from '../auth/service.js';
 import { CredentialVault } from '../credentials/vault.js';
+import { loadOrCreateEncryptionKey } from '../persistence/persistent-secrets.js';
+import { SqliteStore } from '../persistence/sqlite.js';
 import { ExecutionEngine } from '../execution/engine.js';
 import { createNodeRegistry } from '../nodes/registry.js';
 import { createHttpServer } from './server.js';
 import { WorkflowService } from '../workflows/service.js';
 
-class MemoryStore {
-	workflows = new Map();
-	executions = new Map();
-	credentials = new Map();
-
-	async listWorkflows() { return [...this.workflows.values()]; }
-	async getWorkflow(id) { return this.workflows.get(id) ?? null; }
-	async saveWorkflow(workflow) {
-		const saved = { ...structuredClone(workflow), createdAt: new Date(), updatedAt: new Date() };
-		this.workflows.set(workflow.id, saved);
-		return saved;
-	}
-	async deleteWorkflow(id) { return this.workflows.delete(id); }
-	async listScheduleWorkflows() { return []; }
-	async createExecution(execution) {
-		this.executions.set(execution.id, { ...structuredClone(execution), status: 'queued', createdAt: new Date() });
-	}
-	async startExecution(id) { this.executions.get(id).status = 'running'; }
-	async finishExecution(id, output) { Object.assign(this.executions.get(id), { status: 'succeeded', output }); }
-	async failExecution(id, error) { Object.assign(this.executions.get(id), { status: 'failed', error }); }
-	async getExecution(id) { return this.executions.get(id) ?? null; }
-	async listExecutions() { return [...this.executions.values()]; }
-	async createCredential(credential) { this.credentials.set(credential.id, credential); }
-	async listCredentials() { return [...this.credentials.values()].map(({ id, name }) => ({ id, name })); }
-	async getCredential(id) { return this.credentials.get(id) ?? null; }
-	async deleteCredential(id) { return this.credentials.delete(id); }
-}
-
-test('HTTP API serves the editor, requires a token, and executes a persisted workflow', async () => {
-	const store = new MemoryStore();
-	const accessToken = 'http-test-token-that-is-long-enough-to-use';
-	const vault = new CredentialVault('http test encryption key with more than 32 characters');
+test('HTTP editor uses first-admin setup and secure sessions for workflow operations', async () => {
+	const dataDir = await mkdtemp(join(tmpdir(), 'squared-http-'));
+	const store = new SqliteStore(dataDir);
+	await store.connect();
+	const encryptionKey = await loadOrCreateEncryptionKey(dataDir);
+	const vault = new CredentialVault(encryptionKey);
+	const authService = new AdminAuthService({ store, dataDir });
+	await authService.initialize();
+	const bootstrapCode = await readFile(join(dataDir, 'bootstrap-code'), 'utf8');
 	const config = {
-		accessToken,
+		accessToken: 'integration-token-for-tests-32chars',
 		maxRequestBytes: 1_048_576,
 		requestTimeoutMs: 1_000,
 		maxResponseBytes: 1_024,
 	};
 	const engine = new ExecutionEngine({
 		store,
-		registry: createNodeRegistry({ ...config, getCredential: async () => null }),
+		registry: createNodeRegistry({ ...config, getCredential: async (id) => {
+			const credential = await store.getCredential(id);
+			return credential ? vault.open(credential.encryptedValue) : null;
+		} }),
 		concurrency: 1,
 		maxQueued: 8,
 	});
 	const workflows = new WorkflowService(store, engine);
-	const server = createHttpServer({ config, store, workflows, vault });
+	const server = createHttpServer({ config, store, workflows, vault, auth: authService });
 	await new Promise((resolve, reject) => {
 		server.once('error', reject);
 		server.listen(0, '127.0.0.1', resolve);
 	});
 	const base = `http://127.0.0.1:${server.address().port}`;
-	const auth = { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' };
 
 	try {
 		const editor = await fetch(base);
 		assert.equal(editor.status, 200);
 		assert.match(await editor.text(), /<title>Squared<\/title>/);
+		const setupStatus = await fetch(`${base}/api/auth/status`).then((response) => response.json());
+		assert.deepEqual(setupStatus, { setupRequired: true, authenticated: false });
 		assert.equal((await fetch(`${base}/api/workflows`)).status, 401);
 
+		const invalidSetup = await fetch(`${base}/api/auth/bootstrap`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ code: 'invalid', email: 'owner@example.test', password: 'a-strong-password-123' }),
+		});
+		assert.equal(invalidSetup.status, 403);
+		assert.equal((await authService.status(null)).setupRequired, true);
+
+		const createdAdmin = await fetch(`${base}/api/auth/bootstrap`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ code: bootstrapCode, email: 'Owner@Example.test', password: 'a-strong-password-123' }),
+		});
+		assert.equal(createdAdmin.status, 201);
+		const setCookie = createdAdmin.headers.get('set-cookie');
+		assert.match(setCookie, /HttpOnly/);
+		assert.match(setCookie, /Secure/);
+		assert.match(setCookie, /SameSite=Strict/);
+		const cookie = setCookie.split(';')[0];
+		assert.deepEqual(await fetch(`${base}/api/auth/status`, { headers: { cookie } }).then((response) => response.json()), {
+			setupRequired: false,
+			authenticated: true,
+		});
+		assert.equal((await fetch(`${base}/api/workflows`, { headers: { authorization: `Bearer ${config.accessToken}` } })).status, 200);
+		assert.equal(await readFile(join(dataDir, 'bootstrap-code'), 'utf8').then(() => true, () => false), false);
+
+		const secondSetup = await fetch(`${base}/api/auth/bootstrap`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ code: bootstrapCode, email: 'attacker@example.test', password: 'another-strong-password-123' }),
+		});
+		assert.equal(secondSetup.status, 409);
+
+		const auth = { cookie, 'content-type': 'application/json' };
 		const created = await fetch(`${base}/api/workflows`, {
 			method: 'POST',
 			headers: auth,
@@ -79,6 +100,13 @@ test('HTTP API serves the editor, requires a token, and executes a persisted wor
 		assert.equal(created.status, 201);
 		const workflow = await created.json();
 
+		const crossOrigin = await fetch(`${base}/api/workflows`, {
+			method: 'POST',
+			headers: { ...auth, origin: 'https://attacker.example' },
+			body: JSON.stringify({ name: 'Cross origin', nodes: [] }),
+		});
+		assert.equal(crossOrigin.status, 403);
+
 		const run = await fetch(`${base}/api/workflows/${workflow.id}/run`, {
 			method: 'POST', headers: auth, body: JSON.stringify({ input: { message: 'hello' } }),
 		});
@@ -92,6 +120,9 @@ test('HTTP API serves the editor, requires a token, and executes a persisted wor
 		}
 		assert.equal(execution.status, 'succeeded');
 		assert.deepEqual(execution.output, { message: 'hello', result: 'hello' });
+		const deletedExecution = await fetch(`${base}/api/executions/${executionId}`, { method: 'DELETE', headers: auth });
+		assert.equal(deletedExecution.status, 204);
+		assert.equal((await fetch(`${base}/api/executions/${executionId}`, { headers: auth })).status, 404);
 
 		const webhookDefinition = await fetch(`${base}/api/workflows`, {
 			method: 'POST',
@@ -118,7 +149,37 @@ test('HTTP API serves the editor, requires a token, and executes a persisted wor
 		}
 		assert.equal(webhookExecution.status, 'succeeded');
 		assert.equal(webhookExecution.output.copied, 'triggered');
+
+		const credentialResponse = await fetch(`${base}/api/credentials`, {
+			method: 'POST',
+			headers: auth,
+			body: JSON.stringify({ name: 'Test credential', values: { Authorization: 'Bearer hidden-value' } }),
+		});
+		assert.equal(credentialResponse.status, 201);
+		const { id: credentialId } = await credentialResponse.json();
+		assert.equal((await store.getCredential(credentialId)).encryptedValue.includes('hidden-value'), false);
+		assert.deepEqual(vault.open((await store.getCredential(credentialId)).encryptedValue), { Authorization: 'Bearer hidden-value' });
+
+		const logout = await fetch(`${base}/api/auth/logout`, { method: 'POST', headers: { cookie } });
+		assert.equal(logout.status, 204);
+		assert.equal((await fetch(`${base}/api/workflows`, { headers: { cookie } })).status, 401);
+
+		const login = await fetch(`${base}/api/auth/login`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'owner@example.test', password: 'a-strong-password-123' }),
+		});
+		assert.equal(login.status, 200);
+		const loginCookie = login.headers.get('set-cookie').split(';')[0];
+		assert.equal((await fetch(`${base}/api/workflows`, { headers: { cookie: loginCookie } })).status, 200);
+		assert.equal((await fetch(`${base}/api/auth/login`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'owner@example.test', password: 'wrong-password' }),
+		})).status, 401);
 	} finally {
 		await new Promise((resolve) => server.close(resolve));
+		await store.close();
+		await rm(dataDir, { recursive: true, force: true });
 	}
 });

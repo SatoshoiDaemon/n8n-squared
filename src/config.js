@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+
 const DEFAULTS = {
 	port: 80,
 	host: '0.0.0.0',
@@ -18,12 +21,31 @@ function integer(name, value, fallback, { min, max }) {
 }
 export function loadConfig(env = process.env) {
 	const databaseUrl = env.SQUARED_DATABASE_URL || env.DATABASE_URL;
-	if (!databaseUrl) throw new Error('Set SQUARED_DATABASE_URL to a persistent PostgreSQL connection URL');
-	if (!env.SQUARED_ENCRYPTION_KEY || env.SQUARED_ENCRYPTION_KEY.length < 32) {
+	if (databaseUrl) {
+		let protocol;
+		try {
+			protocol = new URL(databaseUrl).protocol;
+		} catch {
+			throw new Error('SQUARED_DATABASE_URL must be a valid PostgreSQL URL');
+		}
+		if (!['postgres:', 'postgresql:'].includes(protocol)) {
+			throw new Error('SQUARED_DATABASE_URL must use PostgreSQL');
+		}
+	}
+	if (env.SQUARED_ENCRYPTION_KEY && env.SQUARED_ENCRYPTION_KEY.length < 32) {
 		throw new Error('SQUARED_ENCRYPTION_KEY must contain at least 32 characters and remain stable between deploys');
 	}
-	if (!env.SQUARED_ACCESS_TOKEN || env.SQUARED_ACCESS_TOKEN.length < 24) {
+	if (env.SQUARED_ACCESS_TOKEN && env.SQUARED_ACCESS_TOKEN.length < 24) {
 		throw new Error('SQUARED_ACCESS_TOKEN must contain at least 24 characters');
+	}
+	const dataDir = resolve(env.SQUARED_DATA_DIR || join(process.cwd(), 'squared-data'));
+	const temporaryRoot = resolve(tmpdir());
+	const relativeToTemp = relative(temporaryRoot, dataDir);
+	if (
+		!isAbsolute(relativeToTemp) &&
+		(relativeToTemp === '' || (relativeToTemp !== '..' && !relativeToTemp.startsWith(`..${sep}`)))
+	) {
+		throw new Error('SQUARED_DATA_DIR cannot be inside the operating system temporary directory');
 	}
 
 	const port = integer('SQUARED_PORT', env.SQUARED_PORT ?? env.PORT, DEFAULTS.port, { min: 1, max: 65535 });
@@ -53,10 +75,11 @@ export function loadConfig(env = process.env) {
 	return Object.freeze({
 		port,
 		host: env.SQUARED_HOST || DEFAULTS.host,
+		dataDir,
 		databaseUrl,
 		databaseSsl: env.SQUARED_DATABASE_SSL === 'require',
-		encryptionKey: env.SQUARED_ENCRYPTION_KEY,
-		accessToken: env.SQUARED_ACCESS_TOKEN,
+		encryptionKey: env.SQUARED_ENCRYPTION_KEY || undefined,
+		accessToken: env.SQUARED_ACCESS_TOKEN || undefined,
 		maxConcurrency,
 		maxQueuedExecutions,
 		schedulePollMs,

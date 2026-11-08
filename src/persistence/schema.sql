@@ -30,3 +30,19 @@ CREATE TABLE IF NOT EXISTS squared_credentials (
 	 created_at timestamptz NOT NULL DEFAULT now(),
 	 updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS squared_admins (
+	admin_id text PRIMARY KEY CHECK (admin_id = 'owner'),
+	email text NOT NULL UNIQUE,
+	password_hash text NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS squared_sessions (
+	token_hash text PRIMARY KEY,
+	admin_id text NOT NULL REFERENCES squared_admins(admin_id) ON DELETE CASCADE,
+	expires_at timestamptz NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS squared_sessions_expiry_idx ON squared_sessions (expires_at);

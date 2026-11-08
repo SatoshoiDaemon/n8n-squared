@@ -18,7 +18,7 @@ export function installShutdownHandlers({ server, scheduler, store, executionEng
 				await store.close();
 				processObject.exitCode = error ? 1 : 0;
 			} catch (closeError) {
-				console.error('PostgreSQL close failed', closeError);
+				console.error('Persistence store close failed', closeError?.name || 'Error', closeError?.code || 'unknown');
 				processObject.exitCode = 1;
 			}
 		});

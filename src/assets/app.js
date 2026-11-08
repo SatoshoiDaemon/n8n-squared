@@ -11,7 +11,7 @@ const types = [
 	['http.request', 'HTTP Request'],
 	['logic.if', 'If'],
 ];
-let token = sessionStorage.getItem('squared-token') || '';
+let authMode = 'login';
 let workflows = [];
 let current = null;
 let toastTimer;
@@ -26,7 +26,8 @@ function notify(message) {
 async function api(path, options = {}) {
 	const response = await fetch(path, {
 		...options,
-		headers: { authorization: `Bearer ${token}`, ...(options.body ? { 'content-type': 'application/json' } : {}), ...options.headers },
+		credentials: 'same-origin',
+		headers: { ...(options.body ? { 'content-type': 'application/json' } : {}), ...options.headers },
 	});
 	const body = response.status === 204 ? null : await response.json();
 	if (!response.ok) throw new Error(body?.error || `Request failed (${response.status})`);
@@ -116,7 +117,7 @@ function renderEditor() {
 	const actions = element('div', 'actions');
 	if (current.nodes[0]?.type === 'trigger.webhook' && current.id) {
 		const url = element('span', 'code', `${location.origin}/webhook/${current.id}`);
-		url.title = 'O endpoint exige o token de acesso da aplicação no cabeçalho Authorization';
+		url.title = 'Chamadas externas podem usar SQUARED_ACCESS_TOKEN; o botão de teste usa sua sessão administrativa';
 		actions.append(url);
 	}
 	if (current.nodes[0]?.type === 'trigger.manual') actions.append(button('Executar', 'secondary-button', runWorkflow));
@@ -238,7 +239,7 @@ function helpFor(type) {
 	if (type === 'data.set') return 'Use values para definir campos. Expressões disponíveis: ={{$json.campo}}, ={{$execution.id}} e ={{$now}}.';
 	if (type === 'http.request') return 'Use method, url, headers, body, credentialId e timeoutMs. Respostas acima de 5 MB são rejeitadas.';
 	if (type === 'logic.if') return 'Defina value, operation (isTrue, equals, notEquals, greaterThan, contains, exists) e compareTo. Se falso, a sequência é encerrada.';
-	if (type === 'trigger.webhook') return 'Envia um POST ao endereço exibido no topo. Inclua Authorization: Bearer <token da aplicação>.';
+	if (type === 'trigger.webhook') return 'Para chamadas externas, configure SQUARED_ACCESS_TOKEN e envie Authorization: Bearer <token>. O teste no editor usa sua sessão administrativa.';
 	return 'Inicie a execução manualmente pelo editor.';
 }
 
@@ -287,7 +288,7 @@ async function saveWorkflow() {
 			: await api('/api/workflows', { method: 'POST', body: JSON.stringify(current) });
 		current = saved;
 		await refreshWorkflows();
-		notify('Workflow salvo no PostgreSQL');
+		notify('Workflow salvo');
 	} catch (error) {
 		notify(error.message);
 	}
@@ -398,8 +399,8 @@ async function openCredentials() {
 	const add = button('＋ Nova credencial', 'primary-button', createCredential);
 	head.append(add);
 	main.append(head);
-	const section = panel('Credenciais criptografadas', 'Chave estável obrigatória');
-	section.body.append(element('p', 'muted', 'Valores são criptografados no servidor com AES-256-GCM. O conteúdo secreto não é retornado pela API. HTTP Request pode usar esses valores como cabeçalhos.'));
+	const section = panel('Credenciais criptografadas', 'Chave persistida automaticamente');
+	section.body.append(element('p', 'muted', 'Valores são criptografados no servidor com AES-256-GCM. A chave é criada na primeira execução e protegida no armazenamento persistente. O conteúdo secreto não é retornado pela API. HTTP Request pode usar esses valores como cabeçalhos.'));
 	const table = element('table', 'table');
 	const thead = document.createElement('thead');
 	const tr = document.createElement('tr');
@@ -447,30 +448,63 @@ function formatDate(value) {
 	return value ? new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 }
 
-function showLogin(message = '') {
+function showAuth(mode, message = '') {
+	authMode = mode;
+	const setup = mode === 'setup';
 	login.hidden = false;
-	$('#login-error').textContent = message;
-	$('#access-token').value = '';
-	$('#access-token').focus();
+	$('#auth-title').textContent = setup ? 'Configure a conta proprietária' : 'Acesse seu workspace';
+	$('#auth-copy').textContent = setup
+		? 'Esta instalação ainda não tem administrador. Informe o código disponível somente no File Manager da implantação.'
+		: 'Entre com a conta administrativa desta instalação.';
+	$('#bootstrap-field').hidden = !setup;
+	$('#bootstrap-code').required = setup;
+	$('#bootstrap-code').value = '';
+	$('#confirm-password-field').hidden = !setup;
+	$('#confirm-password').required = setup;
+	$('#confirm-password').value = '';
+	$('#admin-password').autocomplete = setup ? 'new-password' : 'current-password';
+	if (setup) $('#admin-password').minLength = 12;
+	else $('#admin-password').removeAttribute('minlength');
+	$('#auth-submit').textContent = setup ? 'Criar conta e entrar' : 'Entrar';
+	$('#auth-error').textContent = message;
+	$('#admin-password').value = '';
+	$('#admin-email').focus();
 }
 
-$('#login-form').addEventListener('submit', async (event) => {
+$('#auth-form').addEventListener('submit', async (event) => {
 	event.preventDefault();
-	token = $('#access-token').value;
+	const setup = authMode === 'setup';
+	const password = $('#admin-password').value;
+	if (setup && password !== $('#confirm-password').value) {
+		showAuth('setup', 'As senhas não correspondem.');
+		return;
+	}
 	try {
-		await api('/api/workflows');
-		sessionStorage.setItem('squared-token', token);
+		await api(setup ? '/api/auth/bootstrap' : '/api/auth/login', {
+			method: 'POST',
+			body: JSON.stringify({
+				...(setup ? { code: $('#bootstrap-code').value } : {}),
+				email: $('#admin-email').value,
+				password,
+			}),
+		});
 		login.hidden = true;
+		$('#bootstrap-code').value = '';
+		$('#admin-password').value = '';
+		$('#confirm-password').value = '';
 		await refreshWorkflows();
 	} catch (error) {
-		showLogin(error.message);
+		showAuth(authMode, error.message);
 	}
 });
 
-$('#change-token').addEventListener('click', () => {
-	token = '';
-	sessionStorage.removeItem('squared-token');
-	showLogin();
+$('#logout-button').addEventListener('click', async () => {
+	try {
+		await api('/api/auth/logout', { method: 'POST' });
+		showAuth('login');
+	} catch (error) {
+		notify(error.message);
+	}
 });
 $('#new-workflow').addEventListener('click', createWorkflow);
 $('#empty-new').addEventListener('click', createWorkflow);
@@ -478,13 +512,14 @@ $('#empty-new').addEventListener('click', createWorkflow);
 async function boot() {
 	const health = await fetch('/healthz').then((response) => response.json()).catch(() => null);
 	if (health?.version) $('.sidebar-footer strong').textContent = `Squared ${health.version}`;
-	if (!token) return showLogin();
 	try {
+		const status = await api('/api/auth/status');
+		if (status.setupRequired) return showAuth('setup');
+		if (!status.authenticated) return showAuth('login');
 		await refreshWorkflows();
 		login.hidden = true;
 	} catch (error) {
-		sessionStorage.removeItem('squared-token');
-		showLogin(error.message);
+		showAuth('login', error.message);
 	}
 }
 

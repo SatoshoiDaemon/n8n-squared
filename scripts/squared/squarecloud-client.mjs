@@ -71,13 +71,20 @@ export async function inspectSquareCloud({ client, appId, includeMetrics = true 
 	const metricsRequest = includeMetrics
 		? optionalRequest(() => client.get(`/apps/${encodeURIComponent(appId)}/metrics?range=24h`))
 		: Promise.resolve(null);
-	const [appStatus, envs, account, logs, metrics] = await Promise.all([
-		client.get(`/apps/${encodeURIComponent(appId)}/status`),
-		client.get(`/apps/${encodeURIComponent(appId)}/envs`),
-		client.get('/users/me'),
+	const [statusResult, envsResult, accountResult, logs, metrics] = await Promise.all([
+		requiredProbe('GET /v2/apps/{app_id}/status', () => client.get(`/apps/${encodeURIComponent(appId)}/status`)),
+		requiredProbe('GET /v2/apps/{app_id}/envs', () => client.get(`/apps/${encodeURIComponent(appId)}/envs`)),
+		requiredProbe('GET /v2/users/me', () => client.get('/users/me')),
 		optionalRequest(() => client.get(`/apps/${encodeURIComponent(appId)}/logs`)),
 		metricsRequest,
 	]);
+	const requiredFailures = [statusResult, envsResult, accountResult].filter((result) => result.error);
+	if (requiredFailures.length) {
+		throw new Error(`Square Cloud API preflight access is incomplete: ${requiredFailures.map((result) => `${result.route} returned ${result.error}`).join('; ')}`);
+	}
+	const appStatus = statusResult.value;
+	const envs = envsResult.value;
+	const account = accountResult.value;
 
 	const application = (account?.applications || []).find((candidate) => candidate.id === appId);
 	if (!application) throw new Error('The configured Square Cloud application was not found in the authenticated account');
@@ -136,6 +143,15 @@ export async function optionalRequest(request) {
 		return await request();
 	} catch {
 		return null;
+	}
+}
+
+async function requiredProbe(route, request) {
+	try {
+		return { route, value: await request(), error: null };
+	} catch (error) {
+		const detail = error?.code && error?.status !== undefined ? `${error.code} (HTTP ${error.status})` : 'request failed';
+		return { route, value: null, error: detail };
 	}
 }
 

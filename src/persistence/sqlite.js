@@ -57,7 +57,19 @@ export class SqliteStore {
 	}
 
 	async deleteWorkflow(id) {
+		this.db.prepare('DELETE FROM squared_workflow_runtime_state WHERE workflow_id = ?').run(id);
 		return this.db.prepare('DELETE FROM squared_workflows WHERE id = ?').run(id).changes > 0;
+	}
+
+	async getWorkflowRuntimeState(id) {
+		const row = this.db.prepare('SELECT state_json FROM squared_workflow_runtime_state WHERE workflow_id = ?').get(id);
+		return row ? parseJson(row.state_json) : {};
+	}
+
+	async saveWorkflowRuntimeState(id, state) {
+		this.db.prepare(`INSERT INTO squared_workflow_runtime_state (workflow_id, state_json)
+			VALUES (?, ?) ON CONFLICT (workflow_id) DO UPDATE SET state_json = excluded.state_json, updated_at = CURRENT_TIMESTAMP`)
+			.run(id, JSON.stringify(state ?? {}));
 	}
 
 	async listScheduleWorkflows() {
@@ -74,16 +86,43 @@ export class SqliteStore {
 
 	async startExecution(id) {
 		this.db.prepare("UPDATE squared_executions SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+		this.db.prepare('DELETE FROM squared_execution_waits WHERE execution_id = ?').run(id);
+	}
+
+	async suspendExecution(id, waitState) {
+		this.db.prepare("UPDATE squared_executions SET status = 'waiting', finished_at = NULL WHERE id = ?").run(id);
+		this.db.prepare(`INSERT INTO squared_execution_waits (execution_id, node_name, resume_at, accepts_resume_request, input_json)
+			VALUES (?, ?, ?, ?, ?) ON CONFLICT (execution_id) DO UPDATE SET node_name = excluded.node_name,
+			resume_at = excluded.resume_at, accepts_resume_request = excluded.accepts_resume_request,
+			input_json = excluded.input_json, updated_at = CURRENT_TIMESTAMP`)
+			.run(id, waitState.nodeName, waitState.resumeAt, waitState.acceptsResumeRequest ? 1 : 0, JSON.stringify({ input: waitState.input ?? [], metadata: waitState.metadata ?? {} }));
+	}
+
+	async getWaitingExecution(id) {
+		const row = this.db.prepare(`SELECT e.*, w.node_name, w.resume_at, w.accepts_resume_request, w.input_json
+			FROM squared_executions e JOIN squared_execution_waits w ON w.execution_id = e.id
+			WHERE e.id = ? AND e.status = 'waiting'`).get(id);
+		return row ? waitingExecutionRow(row) : null;
+	}
+
+	async listDueWaitingExecutions(now = Date.now()) {
+		const rowset = this.db.prepare(`SELECT e.*, w.node_name, w.resume_at, w.accepts_resume_request, w.input_json
+			FROM squared_executions e JOIN squared_execution_waits w ON w.execution_id = e.id
+			WHERE e.status = 'waiting' AND w.resume_at IS NOT NULL AND w.resume_at <= ? ORDER BY w.resume_at`)
+			.all(new Date(now).toISOString());
+		return rowset.map(waitingExecutionRow);
 	}
 
 	async finishExecution(id, output) {
 		this.db.prepare("UPDATE squared_executions SET status = 'succeeded', output = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
 			.run(output === undefined ? null : JSON.stringify(output), id);
+		this.db.prepare('DELETE FROM squared_execution_waits WHERE execution_id = ?').run(id);
 	}
 
 	async failExecution(id, error) {
 		this.db.prepare("UPDATE squared_executions SET status = 'failed', error = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?")
 			.run(String(error).slice(0, 4_000), id);
+		this.db.prepare('DELETE FROM squared_execution_waits WHERE execution_id = ?').run(id);
 	}
 
 	async getExecution(id) {
@@ -115,6 +154,11 @@ export class SqliteStore {
 	async getCredential(id) {
 		const row = this.db.prepare('SELECT id, name, encrypted_value FROM squared_credentials WHERE id = ?').get(id);
 		return row ? { id: row.id, name: row.name, encryptedValue: row.encrypted_value } : null;
+	}
+
+	async updateCredential(id, encryptedValue) {
+		return this.db.prepare('UPDATE squared_credentials SET encrypted_value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+			.run(encryptedValue, id).changes > 0;
 	}
 
 	async deleteCredential(id) {
@@ -169,6 +213,21 @@ function executionRow(row) {
 		createdAt: row.created_at,
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
+	};
+}
+
+function waitingExecutionRow(row) {
+	const persistedWaitState = parseJson(row.input_json);
+	const waitInput = Array.isArray(persistedWaitState) ? persistedWaitState : persistedWaitState?.input;
+	return {
+		...executionRow(row),
+		waitState: {
+			nodeName: row.node_name,
+			resumeAt: row.resume_at,
+			acceptsResumeRequest: Boolean(row.accepts_resume_request),
+			input: waitInput ?? [],
+			metadata: Array.isArray(persistedWaitState) ? {} : persistedWaitState?.metadata ?? {},
+		},
 	};
 }
 

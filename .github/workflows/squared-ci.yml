@@ -19,7 +19,9 @@ on:
 jobs:
   runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
+    env:
+      SQUARED_N8N_PACKAGES_DIR: ${{ github.workspace }}/squared-data/n8n-nodes/node_modules
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +29,21 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: |
+            squared-data/n8n-nodes
+            dist/n8n-runtime-seed.tar.br
+            dist/n8n-runtime-seed.json
+          key: squared-n8n-packages-${{ runner.os }}-${{ hashFiles('src/nodes/n8n/package-installer.ts', 'scripts/squared/package-squarecloud.mjs') }}
+      - name: Install pinned official n8n runtime packages
+        run: npm run n8n:install
+      - name: Execute published node compatibility scenarios
+        run: npm run compatibility:validate
+      - name: Regenerate and verify compatibility matrix
+        run: |
+          npm run compatibility:matrix
+          git diff --exit-code -- docs/squared/compatibility-matrix.json docs/squared/compatibility-matrix.md docs/squared/compatibility-runtime-results.json
       - run: npm test
       - run: npm run build
       - name: Package Squared 0.1.0 for Square Cloud
@@ -71,7 +88,7 @@ jobs:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/squared-first-boot')) }}
     needs: runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
     concurrency:

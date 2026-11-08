@@ -31,7 +31,7 @@ for (const reference of referencePackages) {
 		const absoluteSource = join(packageRoot, sourcePath);
 		const source = await readSource(absoluteSource);
 		const metadataSource = await readSourceClosure(absoluteSource, packageRoot, sourceCache);
-		const declaredNodeName = findNodeType(metadataSource) ?? basename(sourcePath).replace(/\.node\.ts$/i, '');
+		const declaredNodeName = findNodeType(source) ?? findNodeType(metadataSource) ?? basename(sourcePath).replace(/\.node\.ts$/i, '');
 		const nodeType = declaredNodeName.includes('.') ? declaredNodeName : `${reference.packageName}.${lowerFirst(declaredNodeName)}`;
 		const interfacesUsed = [...new Set(metadataSource.match(/\bI(?:Execute|ExecuteSingle|SupplyData|Trigger|Poll|Webhook|Hook|LoadOptions|NodeExecutionData|NodeType|CredentialType|WorkflowNodeContext|NodeTypeDescription)\w*\b/g) ?? [])].sort();
 		const entryImports = declaredDependencyImports(source, manifest, reference.packageName);
@@ -163,8 +163,10 @@ function renderSummary(matrix, credentials) {
 }
 
 function findNodeType(source) {
+	const classDescriptionName = source.match(/\bexport\s+class\s+\w+[\s\S]{0,5000}?\bdescription\s*(?::\s*[^=]+)?=\s*\{[\s\S]{0,2000}?\bname\s*:\s*['"]([^'"]+)['"]/m)?.[1];
 	const descriptionName = source.match(/\b(?:base)?description\s*(?::\s*[^=]+)?=\s*\{\s*displayName\s*:\s*['"][^'"]+['"][\s\S]{0,500}?\bname\s*:\s*['"]([^'"]+)['"]/im)?.[1];
-	return descriptionName ?? source.match(/\bname\s*:\s*['"](n8n-nodes-[^'"]+)['"]/m)?.[1] ?? null;
+	const exportedClassName = source.match(/\bexport\s+class\s+([A-Za-z_$][\w$]*)/)?.[1];
+	return classDescriptionName ?? descriptionName ?? exportedClassName ?? source.match(/\bname\s*:\s*['"](n8n-nodes-[^'"]+)['"]/m)?.[1] ?? null;
 }
 
 function findNodeVersion(source) {

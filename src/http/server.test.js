@@ -210,3 +210,41 @@ test('HTTP editor uses first-admin setup and secure sessions for workflow operat
 		await rm(dataDir, { recursive: true, force: true });
 	}
 });
+
+test('registered n8n webhooks accept public requests and pass path parameters to the real workflow service', async () => {
+	let executeArguments;
+	const route = { workflowId: 'active-workflow', nodeName: 'Webhook', params: { orderId: 'ORD-9' } };
+	const workflows = {
+		resolveWebhook(method, path) { return method === 'POST' && path === '/webhook/orders/ORD-9' ? route : null; },
+		async authorizeWebhook() { return true; },
+		async execute(...args) { executeArguments = args; return { id: 'execution-9', status: 'queued' }; },
+	};
+	const server = createHttpServer({
+		config: { maxRequestBytes: 1_048_576 },
+		store: {},
+		workflows,
+		vault: {},
+		auth: { async status() { return { authenticated: false }; } },
+	});
+	await new Promise((resolve, reject) => {
+		server.once('error', reject);
+		server.listen(0, '127.0.0.1', resolve);
+	});
+	try {
+		const base = `http://127.0.0.1:${server.address().port}`;
+		const response = await fetch(`${base}/webhook/orders/ORD-9?source=test`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ status: 'paid' }),
+		});
+		assert.equal(response.status, 202);
+		assert.deepEqual(await response.json(), { id: 'execution-9', status: 'queued' });
+		assert.equal(executeArguments[0], 'active-workflow');
+		assert.equal(executeArguments[1], 'webhook');
+		assert.equal(executeArguments[2].status, 'paid');
+		assert.equal(executeArguments[3].webhookNodeName, 'Webhook');
+		assert.deepEqual(executeArguments[3].webhookRequest.params, { orderId: 'ORD-9' });
+	} finally {
+		await new Promise((resolve) => server.close(resolve));
+	}
+});

@@ -89,6 +89,7 @@ try {
 	if (startup && Number(startup.nodeVersion.split('.')[0]) !== 24) {
 		throw new Error(`Square Cloud started Squared on Node ${startup.nodeVersion}; Node.js 24 is required`);
 	}
+	const n8nRuntime = await waitForN8nRuntimeLog(client, appId, manifest.n8nRuntime);
 
 	const smoke = await runProductionSmoke({
 		client,
@@ -111,10 +112,11 @@ try {
 		['Runtime', startup ? `Squared ${manifest.version}; Node ${startup.nodeVersion}; ${startup.host}:${startup.port}` : `Squared ${manifest.version}; startup log unavailable`],
 		['Profile', '1024 MB configured; SQLite on persistent application storage by default'],
 		['Artifact', `${zipBytes} bytes; SHA-256 ${manifest.sha256}`],
+		['Official n8n runtime', `${n8nRuntime.nodes} package node types discovered; ${n8nRuntime.installMode}; pinned seed ${manifest.n8nRuntime.seedBytes} bytes`],
 		['Pre-deploy snapshot', snapshot ? `${snapshot.name} (${snapshot.versionId})` : 'not required; no responsive previous version'],
 		['Readiness time', `${(ready.readyAt - deploymentStartedAt) / 1000}s from start/restart request`],
 		['Health/editor/auth', 'healthz, readiness, editor, first-boot state and protected API checks passed'],
-		['Production smoke', smoke.mode === 'integration token' ? 'Authenticated workflow create/read, execution, webhook and cleanup passed' : 'Safe public checks passed; no account or workflows were created'],
+		['Production smoke', smoke.mode === 'integration token' ? 'Authenticated workflow persistence, official n8n Set and Code execution, webhook execution and cleanup passed' : 'Safe public checks passed; no account or workflows were created'],
 		['Memory at rest', idleStatus.ram || 'not reported by status endpoint'],
 		['CPU at rest', idleStatus.cpu || 'not reported by status endpoint'],
 		['Startup peak memory', summarizePeak(startupSamples, 'ram')],
@@ -184,7 +186,7 @@ async function existingVersionResponds(appUrl, status) {
 }
 
 async function waitForReadiness({ client, appId, appUrl, startedAt, expectedProduct = 'squared' }) {
-	const deadline = Date.now() + 180_000;
+	const deadline = Date.now() + 600_000;
 	let apiRunning = false;
 	let health = false;
 	let readyAt;
@@ -219,7 +221,7 @@ async function waitForReadiness({ client, appId, appUrl, startedAt, expectedProd
 		}
 		await wait(3_000);
 	}
-	if (!readyAt) throw new Error('Square Cloud application did not reach /healthz/readiness within 180 seconds');
+	if (!readyAt) throw new Error('Square Cloud application did not reach /healthz/readiness within 600 seconds');
 	return { readyAt, readyMs: readyAt - startedAt };
 }
 
@@ -236,6 +238,36 @@ async function waitForStartupLog(client, appId) {
 		await wait(2_000);
 	}
 	return null;
+}
+
+async function waitForN8nRuntimeLog(client, appId, expectedRuntime) {
+	const deadline = Date.now() + 30_000;
+	while (Date.now() < deadline) {
+		try {
+			const result = await client.get(`/apps/${encodeURIComponent(appId)}/logs`);
+			const logs = String(result?.logs || '');
+			const installMatch = logs.match(/Official n8n runtime packages (installed|available) \(([^)]+)\)/);
+			const nodesMatch = logs.match(/Loaded n8n package manifests: ([^\r\n]+?) \((\d+) nodes discovered\)/);
+			if (installMatch && nodesMatch) {
+				const packages = nodesMatch[1].split(',').map((name) => name.trim());
+				const required = ['n8n-nodes-base', '@n8n/n8n-nodes-langchain'];
+				if (required.some((name) => !packages.includes(name))) {
+					throw new Error('Production did not load both pinned official n8n node packages');
+				}
+				const nodes = Number(nodesMatch[2]);
+				if (!Number.isInteger(nodes) || nodes < 569) throw new Error(`Production discovered ${nodes} official node records; expected at least 569`);
+				if (!expectedRuntime?.packages || expectedRuntime.packages['n8n-nodes-base'] !== '2.42.5') {
+					throw new Error('The deployed artifact does not declare the expected n8n-nodes-base version');
+				}
+				return { nodes, installMode: installMatch[1] };
+			}
+		} catch (error) {
+			if (error instanceof Error && /Production did not|Production discovered|deployed artifact/.test(error.message)) throw error;
+			// The process can become healthy before Square Cloud publishes its startup logs.
+		}
+		await wait(2_000);
+	}
+	throw new Error('Square Cloud did not log that the pinned n8n runtime packages were installed and discovered');
 }
 
 async function runProductionSmoke({ client, appId, appUrl, accessToken }) {
@@ -285,6 +317,7 @@ async function runAuthenticatedProductionSmoke({ api, client, appId, samplesDuri
 	if (!authenticated.ok || !Array.isArray(await authenticated.json())) throw new Error('Production workflow API did not accept its configured integration token');
 	let manualWorkflowId;
 	let webhookWorkflowId;
+	let n8nWorkflowId;
 	const executionIds = [];
 	let cleanupFailed = false;
 	try {
@@ -314,6 +347,30 @@ async function runAuthenticatedProductionSmoke({ api, client, appId, samplesDuri
 			throw new Error('Production manual workflow execution did not return the expected output');
 		}
 
+		const n8nWorkflow = await postN8nWorkflow(api, {
+			name: `squared-e2e-n8n-node-${randomUUID()}`,
+			nodes: [
+				{ id: randomUUID(), name: 'Manual Trigger', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+				{ id: randomUUID(), name: 'Set', type: 'n8n-nodes-base.set', typeVersion: 3.5, position: [260, 0], parameters: { mode: 'manual', assignments: { assignments: [{ id: randomUUID(), name: 'compatibility', value: '={{$json.value}}', type: 'string' }] }, includeOtherFields: true, options: {} } },
+				{ id: randomUUID(), name: 'Code', type: 'n8n-nodes-base.code', typeVersion: 2, position: [520, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: 'return $input.all().map(item => ({ json: { ...item.json, codeExecuted: true } }));' } },
+			],
+			connections: {
+				'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+				Set: { main: [[{ node: 'Code', type: 'main', index: 0 }]] },
+			},
+		});
+		n8nWorkflowId = n8nWorkflow.id;
+		const n8nRun = await api(`/api/workflows/${encodeURIComponent(n8nWorkflowId)}/run`, {
+			method: 'POST', body: JSON.stringify({ input: { value: 'official-node-production-smoke' } }),
+		});
+		if (n8nRun.status !== 202) throw new Error(`Published n8n node workflow returned HTTP ${n8nRun.status}`);
+		const n8nExecutionId = (await n8nRun.json()).id;
+		executionIds.push(n8nExecutionId);
+		const n8nExecution = await waitForExecution(api, client, appId, n8nExecutionId, samplesDuringExecution);
+		if (n8nExecution.status !== 'succeeded' || n8nExecution.output?.output?.[0]?.json?.compatibility !== 'official-node-production-smoke' || n8nExecution.output?.output?.[0]?.json?.codeExecuted !== true) {
+			throw new Error('Published n8n Set v3.5 and Code v2 did not execute with the expected production output');
+		}
+
 		const webhookName = `Tarefa 004 smoke webhook ${randomUUID()}`;
 		const webhook = await postWorkflow(api, {
 			name: webhookName,
@@ -340,7 +397,7 @@ async function runAuthenticatedProductionSmoke({ api, client, appId, samplesDuri
 			throw new Error('Production webhook workflow execution did not return the expected output');
 		}
 	} finally {
-		for (const workflowId of [webhookWorkflowId, manualWorkflowId].filter(Boolean)) {
+		for (const workflowId of [webhookWorkflowId, n8nWorkflowId, manualWorkflowId].filter(Boolean)) {
 			try {
 				const deleted = await api(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
 				if (deleted.status !== 204) cleanupFailed = true;
@@ -366,6 +423,14 @@ async function postWorkflow(api, definition) {
 	if (response.status !== 201) throw new Error(`Production workflow creation returned HTTP ${response.status}`);
 	const result = await response.json();
 	if (!result.id) throw new Error('Production workflow creation did not return an identifier');
+	return result;
+}
+
+async function postN8nWorkflow(api, definition) {
+	const response = await api('/api/workflows/import', { method: 'POST', body: JSON.stringify(definition) });
+	if (response.status !== 201) throw new Error(`Production n8n workflow import returned HTTP ${response.status}`);
+	const result = await response.json();
+	if (!result.id) throw new Error('Production n8n workflow import did not return an identifier');
 	return result;
 }
 

@@ -23,6 +23,23 @@ CREATE TABLE IF NOT EXISTS squared_executions (
 CREATE INDEX IF NOT EXISTS squared_executions_workflow_created_idx
 	ON squared_executions (workflow_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS squared_workflow_runtime_state (
+	workflow_id TEXT PRIMARY KEY,
+	state_json TEXT NOT NULL DEFAULT '{}',
+	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS squared_execution_waits (
+	execution_id TEXT PRIMARY KEY REFERENCES squared_executions(id) ON DELETE CASCADE,
+	node_name TEXT NOT NULL,
+	resume_at TEXT,
+	accepts_resume_request INTEGER NOT NULL DEFAULT 1,
+	input_json TEXT NOT NULL DEFAULT '[]',
+	updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS squared_execution_waits_resume_idx ON squared_execution_waits (resume_at);
+
 CREATE TABLE IF NOT EXISTS squared_credentials (
 	id TEXT PRIMARY KEY,
 	name TEXT NOT NULL,

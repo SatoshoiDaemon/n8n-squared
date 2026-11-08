@@ -80,16 +80,87 @@ test('legacy Squared linear workflows run through the same graph planner', async
 	assert.deepEqual(result.output[0]?.json, { value: 4, answer: 5 });
 });
 
-test('engine rejects node version mismatches, unsupported connections, and loops explicitly', async () => {
+test('poll hooks seed real graph execution and trigger hooks persist static data on emit', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.poll', versions: [1], async poll(context) {
+		return [[{ json: { polled: context.getMode() } }]];
+	} });
+	registry.register({ type: 'test.trigger', versions: [1], async trigger(context) {
+		context.getWorkflowStaticData('global').seen = true;
+		await context.emit([[{ json: { event: 'ready' } }]]);
+		return { closeFunction() {} };
+	} });
+	const graphEngine = new GraphExecutionEngine(registry);
+	const pollResult = await graphEngine.execute({
+		id: 'poll-workflow', name: 'Poll', nodes: [{ id: 'poll', name: 'Poll', type: 'test.poll', typeVersion: 1, parameters: {} }],
+	}, { mode: 'poll' });
+	assert.equal(pollResult.status, 'succeeded');
+	assert.deepEqual(pollResult.output.map((item) => item.json), [{ polled: 'poll' }]);
+
+	const emitted = [];
+	const close = await graphEngine.activateTrigger({
+		id: 'trigger-workflow', name: 'Trigger', nodes: [{ id: 'trigger', name: 'Trigger', type: 'test.trigger', typeVersion: 1, parameters: {} }],
+	}, 'Trigger', async (data, staticData) => emitted.push({ data, staticData }));
+	assert.equal(typeof close, 'function');
+	assert.equal(emitted.length, 1);
+	assert.equal(emitted[0].data[0][0].json.event, 'ready');
+	assert.deepEqual(emitted[0].staticData, { flow: { seen: true } });
+});
+
+test('execution metadata is visible to expressions and returned by the graph result', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.metadata', versions: [1], async execute(context) {
+		context.setMetadata({ correlationId: 'fixture-run' });
+		return [context.getInputData().map((item, index) => ({ ...item, json: {
+			...item.json,
+			correlationId: context.getMetadata().correlationId,
+			expressionValue: context.evaluateExpression('{{$execution.correlationId}}', index),
+		} }))];
+	} });
+	const result = await new GraphExecutionEngine(registry).execute({
+		id: 'metadata-workflow', name: 'Execution metadata',
+		nodes: [
+			{ id: 'manual', name: 'Manual', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'metadata', name: 'Metadata', type: 'test.metadata', typeVersion: 1, parameters: {} },
+		],
+		connections: { Manual: { main: [[{ node: 'Metadata', type: 'main', index: 0 }]] } },
+	}, { input: { value: 3 } });
+	assert.equal(result.status, 'succeeded', result.error);
+	assert.equal(result.metadata.correlationId, 'fixture-run');
+	assert.deepEqual(result.output[0].json, { value: 3, correlationId: 'fixture-run', expressionValue: 'fixture-run' });
+});
+
+test('supplyData output flows across ai connections into executable nodes', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'n8n-nodes-base.chatModel', versions: [1], async supplyData() {
+		return { ai_languageModel: { response: { provider: 'fixture-model' } } };
+	} });
+	registry.register({ type: 'n8n-nodes-base.agent', versions: [1], async execute(context) {
+		const model = await context.getInputConnectionData('ai_languageModel', 0, 0);
+		return [[{ json: { model: model.provider, prompt: context.getInputData()[0].json.prompt } }]];
+	} });
+	const result = await new GraphExecutionEngine(registry).execute({
+		id: 'ai-contract-workflow', name: 'AI data connection',
+		nodes: [
+			{ id: 'manual', name: 'Manual', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'model', name: 'Model', type: 'n8n-nodes-base.chatModel', typeVersion: 1, parameters: {} },
+			{ id: 'agent', name: 'Agent', type: 'n8n-nodes-base.agent', typeVersion: 1, parameters: {} },
+		],
+		connections: {
+			Manual: { main: [[{ node: 'Agent', type: 'main', index: 0 }]] },
+			Model: { ai_languageModel: [[{ node: 'Agent', type: 'ai_languageModel', index: 0 }]] },
+		},
+	}, { input: { prompt: 'hello' }, startNode: 'Manual' });
+	assert.equal(result.status, 'succeeded', result.error);
+	assert.deepEqual(result.output.map((item) => item.json), [{ model: 'fixture-model', prompt: 'hello' }]);
+});
+
+test('engine rejects node version mismatches and loops explicitly', async () => {
 	const registry = registryForBranching();
 	const engine = new GraphExecutionEngine(registry);
 	const wrongVersion = baseWorkflow();
 	wrongVersion.nodes[1].typeVersion = 2;
 	assert.match((await engine.execute(wrongVersion, { input: { allow: true } })).error, /supported versions: 1/);
-
-	const nonMain = baseWorkflow();
-	nonMain.connections.Route.main[0][0].type = 'ai_tool';
-	assert.match((await engine.execute(nonMain, { input: { allow: true } })).error, /Connection type ai_tool/);
 
 	const loop = {
 		name: 'Loop', nodes: [

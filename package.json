@@ -17,6 +17,7 @@
 		"deploy:squarecloud": "node scripts/squared/deploy-squarecloud.mjs",
 		"inspect:squarecloud": "node scripts/squared/inspect-squarecloud.mjs",
 		"compatibility:matrix": "node scripts/compatibility/generate-node-matrix.mjs",
+		"n8n:install": "node scripts/compatibility/install-n8n-packages.mjs",
 		"compatibility:validate": "node scripts/compatibility/validate-installed-nodes.mjs",
 		"compatibility:benchmark": "node --expose-gc scripts/compatibility/benchmark-engine.mjs",
 		"compatibility:benchmark:n8n": "node --expose-gc scripts/compatibility/benchmark-n8n-runtime.mjs",

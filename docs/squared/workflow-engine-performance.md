@@ -1,37 +1,36 @@
 # Medição do motor de workflows
 
-## Amostra
+## Executor do Squared
 
-Medições locais em Node.js `24.19.0`, com `npm run compatibility:benchmark`, 60 aquecimentos e 300 amostras por motor em cada execução do script. Duas execuções consecutivas estão resumidas abaixo. O workflow determinístico contém um trigger manual e um node Set que copia `$json.value` para `result`. O armazenamento do motor legado é em memória. O benchmark também importa o executor TypeScript, parser, formato e catálogo de metadados e mede o delta de memória do processo.
+`npm run compatibility:benchmark` foi executado em Node.js `26.13.0`, com 60 aquecimentos e 300 amostras por executor. O workflow sintético contém um trigger manual e um node Set; não acessa rede nem storage persistente.
 
-| Medida | Executor de grafo | Executor atual |
+| Medida | Executor de grafo | Executor legado |
 | --- | ---: | ---: |
-| Amostras por execução do script | 300 | 300 |
-| Tempo médio por execução | 0.073–0.092 ms | 0.004–0.009 ms de duração interna do node |
-| p50 | 0.053–0.060 ms | 0.002 ms |
-| p95 | 0.173–0.243 ms | 0.007–0.015 ms |
-| Vazão observada | 10,779–13,518 execuções/s ponta a ponta | 71,313–90,359 execuções/s ponta a ponta |
-| Tempo total | 22.192–27.833 ms | 3.320–4.207 ms |
+| Importação dos módulos | 251.255 ms | — |
+| RSS / heap / memória externa na importação | +21,778,432 / +4,634,696 / +4,061,656 bytes | — |
+| p50 / p95 por execução | 0.063 / 0.344 ms | 0.002 / 0.009 ms de processamento do node |
+| Vazão ponta a ponta observada | 7,295 execuções/s | 49,175 execuções/s |
+| Vazão do processamento interno do node | — | 226,723 execuções/s |
 
-Importar os módulos demorou `114.478–125.673 ms`. O delta RSS depois da coleta de lixo foi `+17,612,800–19,857,408` bytes (~16.8–18.9 MiB), heap usado `+4,566,384` bytes (~4.35 MiB) e memória externa `+9,996,564` bytes (~9.53 MiB).
+O resultado anterior do PR #6 foi medido em Node.js `24.19.0`: p50 `0.053–0.060 ms`, p95 `0.173–0.243 ms` e vazão `10,779–13,518 execuções/s` para o grafo. Como versão do Node e medições variam, essa é uma referência histórica, não uma comparação controlada.
+
+## Classes oficiais n8n
+
+`npm run compatibility:benchmark:n8n` mediu carregamento sob demanda e execução com `n8n-nodes-base@2.42.5`, no Windows local, com 100 amostras e 20 aquecimentos. A descoberta lê manifests de 569 tipos, incluindo 444 do pacote base, sem importar cada módulo JavaScript.
+
+| Medida | Set v3.5 | Workflow Set → Date & Time → Crypto → Merge → NoOp |
+| --- | ---: | ---: |
+| Descoberta do catálogo | 1,169.708 ms | — |
+| RSS / heap adicional no catálogo | +13,914,112 / +3,069,224 bytes | — |
+| Primeiro carregamento e execução | 1,653.856 ms | 2,542.204 ms |
+| RSS / heap no primeiro uso | +37,625,856 / +20,650,656 bytes | +50,782,208 / +22,080,104 bytes |
+| Média aquecida | 0.308 ms | 5.378 ms |
+| p50 / p95 aquecidos | 0.149 / 1.106 ms | 4.060 / 11.239 ms |
+| Vazão observada | 3,234 execuções/s | 186 execuções/s |
+| RSS / heap após aquecimento, delta do catálogo | +40,169,472 / +20,899,936 bytes | +95,727,616 / +43,676,352 bytes |
+
+O workflow multi-node conecta dois inputs ao Merge. O primeiro uso inclui importação da classe e dependências. Os valores são amostras do processo, não dimensionamento de Square Cloud. O benchmark do PR #6 usava Node 24 e um único Set; ele não é comparável diretamente com estas medições em Node 26. Repita a medição no runtime e perfil de memória do ambiente de produção.
 
 ## Limites da medição
 
-É uma amostra sintética de um item e dois nodes, sem rede, storage SQLite, binários, pacotes de nodes ou execução sustentada. A vazão do grafo mede chamadas sequenciais a `execute`; a vazão legada mede submissão de uma fila e `drain`. A duração interna do node legado mede apenas o processamento do node. O delta RSS/heap é uma medida de um processo e não representa baseline ou estado sustentado em produção. O executor de grafo ainda não é usado na produção.
-
-Esses números caracterizam apenas o custo e o desempenho desta implementação local. Não demonstram capacidade de memória de produção, compatibilidade, nem uma meta de RAM. Rode `npm run compatibility:benchmark` novamente no ambiente-alvo antes de usar esses valores para dimensionamento.
-
-## Pacote real de nodes n8n
-
-Uma amostra separada foi executada com Node.js `24.19.0` e o pacote npm externo `n8n-nodes-base@2.42.5`, usando `npm run compatibility:benchmark:n8n` e 100 execuções medidas de um workflow real com `Set` v3.5. A inicialização do catálogo percorreu 444 nodes sem importar seus módulos JavaScript; o primeiro uso importou o node e dependências sob demanda.
-
-| Medida | Resultado observado |
-| --- | ---: |
-| Catálogo: duração | 193.328 ms |
-| Catálogo: delta RSS / heap | +6,041,600 / +2,546,424 bytes |
-| Primeiro import e execução de Set v3.5 | 819.375 ms |
-| Primeiro import: delta RSS / heap | +41,230,336 / +21,961,240 bytes |
-| Set aquecido: média / p50 / p95 | 0.130 / 0.111 / 0.207 ms |
-| Set aquecido: vazão sequencial | 7,658 execuções/s |
-
-O delta RSS/heap aquecido foi +41,873,408 / +22,257,856 bytes em relação à amostra após catálogo. Uma só execução de benchmark não é baseline de produção: RSS inclui dependências carregadas por `Set`, o ambiente era Windows local e o pacote permaneceu externo. Repita no alvo Square Cloud e com os pacotes instalados que pretende oferecer antes de dimensionar uma instância de 1024 MB.
+Os casos usam entradas pequenas e determinísticas, sem serviços externos. O benchmark do grafo chama o motor diretamente e exclui fila, banco persistente, HTTP server e processo Square Cloud. RSS inclui módulos carregados e alocações daquele processo; não representa uso sustentado ou pico em produção. A amostra multi-node é nova nesta entrega e não há medida equivalente do PR #6. A compatibilidade está registrada separadamente na [matriz e evidências de execução](compatibility-matrix.md).

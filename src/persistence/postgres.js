@@ -73,8 +73,20 @@ export class PostgresStore {
 	}
 
 	async deleteWorkflow(id) {
+		await this.pool.query('DELETE FROM squared_workflow_runtime_state WHERE workflow_id = $1', [id]);
 		const result = await this.pool.query('DELETE FROM squared_workflows WHERE id = $1', [id]);
 		return result.rowCount > 0;
+	}
+
+	async getWorkflowRuntimeState(id) {
+		const { rows } = await this.pool.query('SELECT state_json FROM squared_workflow_runtime_state WHERE workflow_id = $1', [id]);
+		return rows[0]?.state_json ?? {};
+	}
+
+	async saveWorkflowRuntimeState(id, state) {
+		await this.pool.query(`INSERT INTO squared_workflow_runtime_state (workflow_id, state_json)
+			VALUES ($1, $2::jsonb) ON CONFLICT (workflow_id) DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = now()`,
+		[id, JSON.stringify(state ?? {})]);
 	}
 
 	async listScheduleWorkflows() {
@@ -100,6 +112,30 @@ export class PostgresStore {
 			`UPDATE squared_executions SET status = 'running', started_at = now() WHERE id = $1`,
 			[id],
 		);
+		await this.pool.query('DELETE FROM squared_execution_waits WHERE execution_id = $1', [id]);
+	}
+
+	async suspendExecution(id, waitState) {
+		await this.pool.query("UPDATE squared_executions SET status = 'waiting', finished_at = NULL WHERE id = $1", [id]);
+		await this.pool.query(`INSERT INTO squared_execution_waits (execution_id, node_name, resume_at, accepts_resume_request, input_json)
+			VALUES ($1, $2, $3, $4, $5::jsonb) ON CONFLICT (execution_id) DO UPDATE SET node_name = EXCLUDED.node_name,
+			resume_at = EXCLUDED.resume_at, accepts_resume_request = EXCLUDED.accepts_resume_request,
+			input_json = EXCLUDED.input_json, updated_at = now()`,
+		[id, waitState.nodeName, waitState.resumeAt, Boolean(waitState.acceptsResumeRequest), JSON.stringify({ input: waitState.input ?? [], metadata: waitState.metadata ?? {} })]);
+	}
+
+	async getWaitingExecution(id) {
+		const { rows } = await this.pool.query(`SELECT e.*, w.node_name, w.resume_at, w.accepts_resume_request, w.input_json
+			FROM squared_executions e JOIN squared_execution_waits w ON w.execution_id = e.id
+			WHERE e.id = $1 AND e.status = 'waiting'`, [id]);
+		return rows[0] ? waitingExecutionRow(rows[0]) : null;
+	}
+
+	async listDueWaitingExecutions(now = Date.now()) {
+		const { rows } = await this.pool.query(`SELECT e.*, w.node_name, w.resume_at, w.accepts_resume_request, w.input_json
+			FROM squared_executions e JOIN squared_execution_waits w ON w.execution_id = e.id
+			WHERE e.status = 'waiting' AND w.resume_at IS NOT NULL AND w.resume_at <= $1 ORDER BY w.resume_at`, [new Date(now)]);
+		return rows.map(waitingExecutionRow);
 	}
 
 	async finishExecution(id, output) {
@@ -108,6 +144,7 @@ export class PostgresStore {
 			 finished_at = now() WHERE id = $1`,
 			[id, JSON.stringify(output ?? null)],
 		);
+		await this.pool.query('DELETE FROM squared_execution_waits WHERE execution_id = $1', [id]);
 	}
 
 	async failExecution(id, error) {
@@ -115,6 +152,7 @@ export class PostgresStore {
 			`UPDATE squared_executions SET status = 'failed', error = $2, finished_at = now() WHERE id = $1`,
 			[id, String(error).slice(0, 4_000)],
 		);
+		await this.pool.query('DELETE FROM squared_execution_waits WHERE execution_id = $1', [id]);
 	}
 
 	async getExecution(id) {
@@ -160,6 +198,11 @@ export class PostgresStore {
 			[id],
 		);
 		return rows[0] ? { id: rows[0].id, name: rows[0].name, encryptedValue: rows[0].encrypted_value } : null;
+	}
+
+	async updateCredential(id, encryptedValue) {
+		const result = await this.pool.query('UPDATE squared_credentials SET encrypted_value = $2, updated_at = now() WHERE id = $1', [id, encryptedValue]);
+		return result.rowCount > 0;
 	}
 
 	async deleteCredential(id) {
@@ -232,5 +275,20 @@ function executionRow(row) {
 		createdAt: row.created_at,
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
+	};
+}
+
+function waitingExecutionRow(row) {
+	const persistedWaitState = row.input_json ?? [];
+	const waitInput = Array.isArray(persistedWaitState) ? persistedWaitState : persistedWaitState?.input;
+	return {
+		...executionRow(row),
+		waitState: {
+			nodeName: row.node_name,
+			resumeAt: row.resume_at,
+			acceptsResumeRequest: row.accepts_resume_request,
+			input: waitInput ?? [],
+			metadata: Array.isArray(persistedWaitState) ? {} : persistedWaitState?.metadata ?? {},
+		},
 	};
 }

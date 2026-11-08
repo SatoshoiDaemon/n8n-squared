@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ExecutionEngine } from './engine.js';
 import { createNodeRegistry } from '../nodes/registry.js';
+import { GraphExecutionEngine, NodeAdapterRegistry } from './graph-engine.ts';
 
 class FakeStore {
 	items = new Map();
@@ -62,4 +63,32 @@ test('a false IF node stops the sequence without running later nodes', async () 
 	const result = await waitForTerminal(store, queued.id);
 	assert.equal(result.status, 'succeeded');
 	assert.equal(result.output, null);
+});
+
+test('active trigger emissions enter the queue and deactivation closes the trigger', async () => {
+	const store = new FakeStore();
+	store.runtimeState = new Map();
+	store.getWorkflowRuntimeState = async (id) => store.runtimeState.get(id) ?? {};
+	store.saveWorkflowRuntimeState = async (id, state) => store.runtimeState.set(id, state);
+	const adapters = new NodeAdapterRegistry();
+	let closeCount = 0;
+	adapters.register({ type: 'n8n-nodes-base.eventTrigger', versions: [1], async trigger(context) {
+		context.getWorkflowStaticData('global').activated = true;
+		await context.emit([[{ json: { event: 'connected' } }]]);
+		return { closeFunction() { closeCount += 1; } };
+	} });
+	const graphEngine = new GraphExecutionEngine(adapters);
+	const engine = new ExecutionEngine({ store, registry: new Map(), graphEngine, concurrency: 1, maxQueued: 2 });
+	const workflow = {
+		id: 'trigger-workflow', name: 'Event trigger', active: true,
+		nodes: [{ id: 'event', name: 'Event Trigger', type: 'n8n-nodes-base.eventTrigger', typeVersion: 1, parameters: {} }],
+	};
+	await engine.reconcileTriggers([{ workflow, node: workflow.nodes[0] }]);
+	await engine.drain();
+	const execution = [...store.items.values()][0];
+	assert.equal(execution.status, 'succeeded');
+	assert.deepEqual(execution.output.output.map((item) => item.json), [{ event: 'connected' }], JSON.stringify(execution.output));
+	assert.deepEqual(store.runtimeState.get(workflow.id), { flow: { activated: true } });
+	await engine.reconcileTriggers([]);
+	assert.equal(closeCount, 1);
 });

@@ -105,7 +105,7 @@ const report = {
 	limitations: [
 		'Synthetic one-item, two-node workflow using an in-memory store and no network or binary payloads.',
 		'RSS and heap deltas are one-process samples; they are not steady-state production measurements.',
-		'The graph engine is not connected to the production execution path.',
+		'This benchmark invokes the graph engine directly; it excludes the production queue, persistent database, HTTP server, and Square Cloud process.',
 	],
 };
 console.log(JSON.stringify(report, null, 2));

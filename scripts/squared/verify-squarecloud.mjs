@@ -40,7 +40,14 @@ export function verifySquareCloudPackage() {
 
 	archiveOutput(['-tqq', archive], ['-tf', archive]);
 	const entries = archiveOutput(['-Z1', archive], ['-tf', archive]).split(/\r?\n/).filter(Boolean);
-	const requiredEntries = ['package.json', 'package-lock.json', 'squarecloud.app', 'src/main.js', 'node_modules/pg/package.json'];
+	const requiredEntries = [
+		'package.json',
+		'package-lock.json',
+		'squarecloud.app',
+		'src/main.js',
+		'node_modules/pg/package.json',
+		'vendor/n8n-runtime.tar.br',
+	];
 	for (const entry of requiredEntries) {
 		if (!entries.includes(entry)) throw new Error(`Square Cloud ZIP is missing ${entry}`);
 	}
@@ -57,6 +64,28 @@ export function verifySquareCloudPackage() {
 	}
 	if (!runtimePackage.engines?.node || !/^>=\s*24(?:\.0\.0)?$/.test(runtimePackage.engines.node)) {
 		throw new Error('ZIP runtime must declare Node.js 24 or later');
+	}
+	if (
+		!manifest.n8nRuntime ||
+		manifest.n8nRuntime.seedArchive !== 'vendor/n8n-runtime.tar.br' ||
+		manifest.n8nRuntime.seedBytes <= 0 ||
+		!/^[a-f0-9]{64}$/.test(manifest.n8nRuntime.seedSha256 || '') ||
+		manifest.n8nRuntime.licenseBundle?.file !== 'THIRD_PARTY_LICENSES.txt' ||
+		manifest.n8nRuntime.licenseBundle?.files <= 0 ||
+		manifest.n8nRuntime.licenseBundle?.bytes <= 0 ||
+		!/^[a-f0-9]{64}$/.test(manifest.n8nRuntime.licenseBundle?.sha256 || '')
+	) {
+		throw new Error('Square Cloud package is missing the n8n runtime seed or third-party license metadata');
+	}
+	const expectedN8nPackages = {
+		'n8n-nodes-base': '2.42.5',
+		'@n8n/n8n-nodes-langchain': '2.42.5',
+		'n8n-core': '2.42.5',
+		'@n8n/backend-common': '1.42.5',
+		'n8n-workflow': '2.42.4',
+	};
+	if (JSON.stringify(manifest.n8nRuntime.packages) !== JSON.stringify(expectedN8nPackages)) {
+		throw new Error('Square Cloud package contains an unexpected n8n runtime package set or version');
 	}
 
 	const squareCloudConfig = Object.fromEntries(

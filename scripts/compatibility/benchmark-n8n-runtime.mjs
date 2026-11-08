@@ -54,6 +54,59 @@ const measuredElapsedMs = performance.now() - measuredStart;
 globalThis.gc?.();
 const afterWarmRuns = process.memoryUsage();
 
+const multiNodeWorkflow = {
+	name: 'n8n multiple node runtime benchmark',
+	nodes: [
+		{ id: 'manual', name: 'Manual', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+		{ id: 'set', name: 'Set', type: 'n8n-nodes-base.set', typeVersion: 3.5, parameters: {
+			mode: 'manual', assignments: { assignments: [{ id: 'multi-benchmark', name: 'result', value: '={{$json.value}}', type: 'number' }] }, includeOtherFields: true, options: {},
+		} },
+		{ id: 'date', name: 'Date & Time', type: 'n8n-nodes-base.dateTime', typeVersion: 2, parameters: {
+			operation: 'formatDate', date: '2024-01-02T03:04:05.000Z', format: 'yyyy-MM-dd', outputFieldName: 'formattedDate', options: { includeInputFields: true },
+		} },
+		{ id: 'crypto', name: 'Crypto', type: 'n8n-nodes-base.crypto', typeVersion: 2, parameters: {
+			action: 'hash', binaryData: false, value: 'hello', type: 'SHA256', encoding: 'hex', dataPropertyName: 'sha256',
+		} },
+		{ id: 'merge', name: 'Merge', type: 'n8n-nodes-base.merge', typeVersion: 3.2, parameters: { mode: 'append', numberInputs: 2 } },
+		{ id: 'noop', name: 'No Operation', type: 'n8n-nodes-base.noOp', typeVersion: 1, parameters: {} },
+	],
+	connections: {
+		Manual: { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+		Set: { main: [[{ node: 'Date & Time', type: 'main', index: 0 }]] },
+		'Date & Time': { main: [[{ node: 'Crypto', type: 'main', index: 0 }]] },
+		Crypto: { main: [[{ node: 'Merge', type: 'main', index: 0 }, { node: 'Merge', type: 'main', index: 1 }]] },
+		Merge: { main: [[{ node: 'No Operation', type: 'main', index: 0 }]] },
+	},
+};
+const expectedHash = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
+globalThis.gc?.();
+const beforeMultiNodeLoad = process.memoryUsage();
+const multiFirstStart = performance.now();
+const multiFirst = await engine.execute(multiNodeWorkflow, { input: { value: 1 } });
+const multiNodeFirstLoadAndExecutionMs = performance.now() - multiFirstStart;
+if (multiFirst.status !== 'succeeded' || multiFirst.output.length !== 2 || multiFirst.output.some((item) => item.json.sha256 !== expectedHash || item.json.formattedDate !== '2024-01-02')) {
+	throw new Error(`Multiple-node n8n workflow failed: ${multiFirst.error}`);
+}
+globalThis.gc?.();
+const afterMultiNodeLoad = process.memoryUsage();
+for (let index = 0; index < warmup; index += 1) {
+	const result = await engine.execute(multiNodeWorkflow, { input: { value: index } });
+	if (result.status !== 'succeeded' || result.output.length !== 2) throw new Error('Multiple-node n8n workflow warmup failed');
+}
+const multiNodeSamples = [];
+const multiNodeMeasuredStart = performance.now();
+for (let index = 0; index < iterations; index += 1) {
+	const start = performance.now();
+	const result = await engine.execute(multiNodeWorkflow, { input: { value: index } });
+	multiNodeSamples.push(performance.now() - start);
+	if (result.status !== 'succeeded' || result.output.length !== 2 || result.output.some((item) => item.json.result !== index)) {
+		throw new Error('Multiple-node n8n benchmark returned incorrect output');
+	}
+}
+const multiNodeElapsedMs = performance.now() - multiNodeMeasuredStart;
+globalThis.gc?.();
+const afterMultiNodeWarmRuns = process.memoryUsage();
+
 console.log(JSON.stringify({
 	nodeVersion: process.versions.node,
 	package: 'n8n-nodes-base',
@@ -83,7 +136,23 @@ console.log(JSON.stringify({
 		rssDeltaBytesFromCatalog: afterWarmRuns.rss - afterCatalog.rss,
 		heapUsedDeltaBytesFromCatalog: afterWarmRuns.heapUsed - afterCatalog.heapUsed,
 	},
-	limitations: ['Single Node 24.19 process sample, one-item Set v3.5 workflow and external installed package.', 'RSS deltas are process samples, not Square Cloud steady-state measurements.'],
+	multipleNodeWorkflow: {
+		nodes: ['set@3.5', 'dateTime@2', 'crypto@2', 'merge@3.2', 'noOp@1'],
+		firstLazyLoadsAndExecutionMs: round(multiNodeFirstLoadAndExecutionMs),
+		additionalRssBytesFromBeforeLoad: afterMultiNodeLoad.rss - beforeMultiNodeLoad.rss,
+		additionalHeapBytesFromBeforeLoad: afterMultiNodeLoad.heapUsed - beforeMultiNodeLoad.heapUsed,
+		warmRuns: {
+			count: multiNodeSamples.length,
+			meanMs: round(multiNodeSamples.reduce((sum, sample) => sum + sample, 0) / multiNodeSamples.length),
+			p50Ms: round(percentile(multiNodeSamples, 0.5)),
+			p95Ms: round(percentile(multiNodeSamples, 0.95)),
+			throughputPerSecond: round(iterations * 1000 / multiNodeElapsedMs),
+			elapsedMs: round(multiNodeElapsedMs),
+			rssDeltaBytesFromCatalog: afterMultiNodeWarmRuns.rss - afterCatalog.rss,
+			heapUsedDeltaBytesFromCatalog: afterMultiNodeWarmRuns.heapUsed - afterCatalog.heapUsed,
+		},
+	},
+	limitations: ['Measurements ran in a single Node 26 process with locally installed official packages; the PR #6 baseline ran on Node 24.19.', 'The workflows use one input item, deterministic local node operations and an in-memory graph engine.', 'RSS deltas are process samples, not Square Cloud steady-state measurements.'],
 }, null, 2));
 
 function percentile(values, fraction) {

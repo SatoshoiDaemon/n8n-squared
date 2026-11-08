@@ -13,6 +13,7 @@ yarn.lock
 google-generated-credentials.json
 _START_PACKAGE
 .env
+.env.codex
 .env.local
 .env.eval
 .vscode/*

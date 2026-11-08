@@ -1,6 +1,6 @@
 # Matriz de compatibilidade de nodes
 
-Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.md). O snapshot registra n8n 2.42.7, mas os manifests dos pacotes abaixo têm versões próprias. A URL configurada para a instalação de referência responde como Squared 0.1.0 e não permite validar uma instalação n8n.
+Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.md), com evidência de execução de módulos npm reais quando disponível. O snapshot registra n8n 2.42.7, mas os manifests dos pacotes abaixo têm versões próprias.
 
 ## Pacotes de referência
 
@@ -19,11 +19,11 @@ Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.m
 | Estado | Cobertura |
 | --- | ---: |
 | discovered | 569 / 569 |
-| loaded | 0 / 569 |
-| configurable | 0 / 569 |
-| executable | 0 / 569 |
-| validated | 0 / 569 |
+| loaded | 20 / 569 |
+| configurable | 20 / 569 |
+| executable | 20 / 569 |
+| validated | 20 / 569 |
 
-O JSON ao lado contém um registro por entrada de node nos manifests, com tipo de execução inferido estaticamente, versão encontrada no source, dependências externas detectadas na closure local do source, imports diretos do arquivo de entrada, interfaces reconhecidas, licença declarada e falhas conhecidas. As dependências declaradas no manifest aparecem uma vez por pacote no resumo. A inferência estática não conta como carregamento ou teste.
+O JSON ao lado registra cada node dos manifests com tipo de execução, versão, dependências detectadas, interfaces, licença e evidência por teste. Nodes com status executável foram carregados do pacote publicado e executaram seu próprio método; nomes e metadados sem uma execução aprovada permanecem como descobertos.
 
-Não há nodes carregados, configuráveis, executáveis ou validados nesta matriz. O catálogo externo ainda não está instalado no runtime e o código dos nodes não é importado pelo processo Squared. Isso evita marcar nomes/metadados como compatibilidade executável. Community packages: não descobertos; a instância de referência não disponibiliza sua lista autenticada.
+A validação local executou 23 casos determinísticos usando n8n-nodes-base@2.42.5, marcou 20 tipos como validados e carregou 2 schemas de credencial. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.

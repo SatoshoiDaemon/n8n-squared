@@ -19,7 +19,7 @@ export class WorkflowScheduler {
 	stop() {
 		this.stopped = true;
 		clearInterval(this.timer);
-		return this.currentPoll;
+		return this.currentPoll.then(() => this.workflowService.deactivateAllTriggers?.());
 	}
 
 	#schedulePoll() {
@@ -32,6 +32,9 @@ export class WorkflowScheduler {
 		this.polling = true;
 		try {
 			const now = Date.now();
+			await this.workflowService.resumeDueWaits?.(now);
+			await this.workflowService.reconcileTriggers?.();
+			await this.workflowService.pollActiveWorkflows?.();
 			const workflows = await this.store.listScheduleWorkflows();
 			if (this.stopped) return;
 			for (const workflow of workflows) {

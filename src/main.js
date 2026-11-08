@@ -11,7 +11,11 @@ import { WorkflowScheduler } from './triggers/scheduler.js';
 import { WorkflowService } from './workflows/service.js';
 import { GraphExecutionEngine, NodeAdapterRegistry } from './execution/graph-engine.ts';
 import { N8nNodePackageRuntime } from './nodes/n8n/runtime.ts';
+import { ensureN8nPackages } from './nodes/n8n/package-installer.ts';
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { PersistentBinaryDataStore } from './persistence/binary-data-store.js';
+import { createSquaredCredentialProvider } from './nodes/n8n/credential-provider.ts';
 
 const config = loadConfig();
 const product = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
@@ -31,16 +35,25 @@ async function start() {
 			return credential ? vault.open(credential.encryptedValue) : null;
 		},
 	});
+	console.log('Preparing pinned official n8n runtime packages in persistent storage; the first start may take several minutes');
+	const n8nPackageInstall = await ensureN8nPackages(config.n8nPackagesDir, {
+		seedArchivePath: join(process.cwd(), 'vendor', 'n8n-runtime.tar.br'),
+		lockfilePath: join(process.cwd(), 'vendor', 'n8n-package-lock.json'),
+	});
+	console.log(`Official n8n runtime packages ${n8nPackageInstall.installed ? 'installed' : 'available'} (${n8nPackageInstall.packages.join(', ')})`);
 	const n8nNodeRuntime = new N8nNodePackageRuntime(config.n8nPackagesDir);
 	const n8nAdapterRegistry = new NodeAdapterRegistry();
 	const n8nPackages = await n8nNodeRuntime.initialize(n8nAdapterRegistry);
-	const graphEngine = new GraphExecutionEngine(n8nAdapterRegistry, async (reference) => {
-		let credential = reference.id ? await store.getCredential(reference.id) : null;
-		if (!credential && reference.name) {
-			const saved = (await store.listCredentials()).find((item) => item.name === reference.name);
-			if (saved) credential = await store.getCredential(saved.id);
-		}
-		return credential ? vault.open(credential.encryptedValue) : null;
+	const credentialProvider = createSquaredCredentialProvider({
+		async getCredential(id) { return store.getCredential(id); },
+		async getCredentialByName(name) {
+			const credential = (await store.listCredentials()).find((item) => item.name === name);
+			return credential ? store.getCredential(credential.id) : null;
+		},
+		async updateCredential(id, encryptedValue) { return store.updateCredential(id, encryptedValue); },
+	}, vault);
+	const graphEngine = new GraphExecutionEngine(n8nAdapterRegistry, credentialProvider, {
+		binaryStore: new PersistentBinaryDataStore(join(config.dataDir, 'n8n-binary')),
 	});
 	const engine = new ExecutionEngine({
 		store,
@@ -51,7 +64,7 @@ async function start() {
 		requestTimeoutMs: config.requestTimeoutMs,
 		maxResponseBytes: config.maxResponseBytes,
 	});
-	const workflows = new WorkflowService(store, engine);
+	const workflows = new WorkflowService(store, engine, n8nNodeRuntime, credentialProvider);
 	const scheduler = new WorkflowScheduler({ store, workflowService: workflows, pollMs: config.schedulePollMs });
 	const server = createHttpServer({ config: { ...config, version: product.version }, store, workflows, vault, auth, n8nNodeRuntime });
 	installShutdownHandlers({ server, scheduler, store, executionEngine: engine });

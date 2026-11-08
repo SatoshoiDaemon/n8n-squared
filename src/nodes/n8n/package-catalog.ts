@@ -28,7 +28,15 @@ export interface CatalogNode {
 	knownFailures: string[];
 	description?: Record<string, unknown>;
 	metadata?: Record<string, unknown>;
-	validationEvidence?: Array<{ typeVersion: number; test: string; status: 'passed' }>;
+	validationEvidence?: Array<{
+		typeVersion: number;
+		test: string;
+		operation?: string;
+		contracts?: string[];
+		expected?: unknown;
+		observed?: unknown;
+		status: 'passed';
+	}>;
 }
 
 export interface CatalogCredential {
@@ -38,6 +46,7 @@ export interface CatalogCredential {
 	enterpriseRestricted: boolean;
 	credentialName: string;
 	credentialType: string;
+	version: number | number[] | null;
 	manifestPath: string;
 	descriptionPath: string;
 	loaded: boolean;
@@ -113,6 +122,7 @@ export class N8nPackageCatalog {
 					enterpriseRestricted,
 					credentialName: basenameWithoutExtension(path),
 					credentialType: lowerFirst(basenameWithoutExtension(path)),
+					version: null,
 					packageVersion: manifest.version ?? 'unknown',
 					manifestPath: relative(resolve(this.packagesDirectory), safePath),
 					descriptionPath: safePath.replace(/\.credentials\.ee\.js$/i, '.credentials.ee.json').replace(/\.credentials\.js$/i, '.credentials.json'),
@@ -165,6 +175,7 @@ export class N8nPackageCatalog {
 		const credential = [...this.credentials.values()].find((item) => item.credentialType === credentialType);
 		if (!credential) return;
 		credential.credentialType = typeof description.name === 'string' ? description.name : credential.credentialType;
+		credential.version = parseVersion(description.version);
 		credential.description = description;
 		credential.loaded = true;
 		credential.configurable = Array.isArray(description.properties);
@@ -193,20 +204,54 @@ export class N8nPackageCatalog {
 			'Static node metadata has no parameter properties array.',
 			'Node description has no properties array.',
 			'No successful node execution has exercised this node version against Squared contracts yet.',
-		].includes(failure));
+		].includes(failure) && (executable || (!failure.startsWith('Node method failed before producing') && !failure.startsWith('Required runtime contract is unavailable:'))));
 		if (!node.compatibility.configurable) node.knownFailures.push('Runtime node description has no properties array.');
 		if (!executable) node.knownFailures.push('No successful node execution has exercised this node version against Squared contracts yet.');
 	}
 
 	markValidated(nodeType: string, typeVersion: number, test: string): void {
+		this.markValidatedWithEvidence(nodeType, { typeVersion, test, operation: 'unspecified', contracts: [], expected: null, observed: null, status: 'passed' });
+	}
+
+	markValidatedWithEvidence(nodeType: string, evidence: {
+		typeVersion: number;
+		test: string;
+		operation: string;
+		contracts: string[];
+		expected: unknown;
+		observed: unknown;
+		status: 'passed';
+	}): void {
 		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
 		if (!node || !node.compatibility.executable) throw new Error(`Cannot validate node before its runtime contract is executable: ${nodeType}`);
-		const evidence = node.validationEvidence ?? [];
-		if (!evidence.some((item) => item.typeVersion === typeVersion && item.test === test)) {
-			evidence.push({ typeVersion, test, status: 'passed' });
+		const validationEvidence = node.validationEvidence ?? [];
+		if (!validationEvidence.some((item) => item.typeVersion === evidence.typeVersion && item.test === evidence.test)) {
+			validationEvidence.push(evidence);
 		}
-		node.validationEvidence = evidence;
+		node.validationEvidence = validationEvidence;
 		node.compatibility.validated = true;
+	}
+
+	markExecutionFailure(nodeType: string, error: unknown): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.executable = false;
+		const detail = error instanceof Error ? error.message : String(error);
+		const missingContract = detail.match(/n8n (?:IExecuteFunctions|IPollFunctions|ITriggerFunctions|IWebhookFunctions)(?:\.helpers)?\.[A-Za-z_$][\w$]*/)?.[0];
+		const reason = missingContract
+			? `Required runtime contract is unavailable: ${missingContract}`
+			: `Node method failed before producing a successful result (${error instanceof Error ? error.name : 'Error'}).`;
+		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('Node method failed before producing') && !item.startsWith('Required runtime contract is unavailable:')), reason])];
+	}
+
+	markExecutable(nodeType: string): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.executable = true;
+		node.knownFailures = node.knownFailures.filter((failure) =>
+			!failure.startsWith('No successful node execution has exercised') &&
+			!failure.startsWith('Node method failed before producing') &&
+			!failure.startsWith('Required runtime contract is unavailable:'));
 	}
 
 	assertExecutable(nodeType: string): CatalogNode {

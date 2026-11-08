@@ -11,6 +11,7 @@ export interface N8nExpressionContext {
 	execution?: Record<string, unknown>;
 	workflow?: Record<string, unknown>;
 	credentials?: Record<string, unknown>;
+	additional?: Record<string, unknown>;
 	clock?: () => Date;
 }
 
@@ -349,6 +350,7 @@ function evaluateCall(node: Extract<ExpressionNode, { kind: 'call' }>, context: 
 }
 
 function resolveIdentifier(name: string, context: N8nExpressionContext): unknown {
+	if (Object.hasOwn(context.additional ?? {}, name)) return context.additional?.[name];
 	switch (name) {
 		case '$json': return context.item.json;
 		case '$binary': return context.item.binary ?? {};

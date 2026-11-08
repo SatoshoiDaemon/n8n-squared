@@ -18,6 +18,29 @@ export function createHttpServer({ config, store, workflows, vault, auth, n8nNod
 			if (request.method === 'GET' && url.pathname === '/') return sendAsset(response, 'index.html', 'text/html; charset=utf-8');
 			if (request.method === 'GET' && url.pathname === '/app.js') return sendAsset(response, 'app.js', 'text/javascript; charset=utf-8');
 			if (request.method === 'GET' && url.pathname === '/styles.css') return sendAsset(response, 'styles.css', 'text/css; charset=utf-8');
+			if (['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+				const registeredWebhook = workflows.resolveWebhook?.(request.method, url.pathname);
+				if (registeredWebhook) {
+					const webhookRequest = await readWebhookRequest(request, url, config.maxRequestBytes);
+					webhookRequest.params = registeredWebhook.params;
+					if (!(await workflows.authorizeWebhook?.(registeredWebhook, webhookRequest))) {
+						return sendJson(response, 401, { error: 'Webhook authentication failed' });
+					}
+					const result = await workflows.execute(
+						registeredWebhook.workflowId,
+						'webhook',
+						webhookRequest.body,
+						{ webhookRequest, webhookNodeName: registeredWebhook.nodeName },
+					);
+					if (result.noExecution && result.capturedResponse?.ended) {
+						return sendCapturedWebhookResponse(response, result.capturedResponse, request.method);
+					}
+					if (result.webhookResponse !== undefined) {
+						return sendWebhookResponse(response, result.capturedResponse, result.webhookResponse, request.method);
+					}
+					return sendJson(response, 202, { id: result.id, status: result.status });
+				}
+			}
 
 			if (request.method === 'GET' && url.pathname === '/api/auth/status') {
 				return sendJson(response, 200, await auth.status(sessionTokenFromRequest(request)));
@@ -72,6 +95,13 @@ export function createHttpServer({ config, store, workflows, vault, auth, n8nNod
 				const body = await readJson(request, config.maxRequestBytes);
 				return sendJson(response, 201, await workflows.importN8nWorkflow(body));
 			}
+			const workflowActivationMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/(activate|deactivate)$/);
+			if (workflowActivationMatch && request.method === 'POST') {
+				return sendJson(response, 200, await workflows.setActive(
+					decodeURIComponent(workflowActivationMatch[1]),
+					workflowActivationMatch[2] === 'activate',
+				));
+			}
 			const workflowExportMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/export$/);
 			if (workflowExportMatch && request.method === 'GET') {
 				return sendJson(response, 200, await workflows.exportN8nWorkflow(decodeURIComponent(workflowExportMatch[1])));
@@ -98,13 +128,30 @@ export function createHttpServer({ config, store, workflows, vault, auth, n8nNod
 				);
 			}
 			const webhookMatch = url.pathname.match(/^\/webhook\/([^/]+)$/);
-			if (webhookMatch && request.method === 'POST') {
-				const input = await readJson(request, config.maxRequestBytes);
-				return sendJson(response, 202, await workflows.execute(decodeURIComponent(webhookMatch[1]), 'webhook', input));
+			if (webhookMatch && ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) {
+				const webhookRequest = await readWebhookRequest(request, url, config.maxRequestBytes);
+				const result = await workflows.execute(
+					decodeURIComponent(webhookMatch[1]),
+					'webhook',
+					webhookRequest.body,
+					{ webhookRequest },
+				);
+				if (result.noExecution && result.capturedResponse?.ended) {
+					return sendCapturedWebhookResponse(response, result.capturedResponse);
+				}
+				if (result.webhookResponse !== undefined) {
+					return sendWebhookResponse(response, result.capturedResponse, result.webhookResponse);
+				}
+				return sendJson(response, 202, { id: result.id, status: result.status });
 			}
 			if (request.method === 'GET' && url.pathname === '/api/executions') {
 				const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 50));
 				return sendJson(response, 200, await store.listExecutions(limit));
+			}
+			const resumeMatch = url.pathname.match(/^\/api\/executions\/([^/]+)\/resume$/);
+			if (resumeMatch && request.method === 'POST') {
+				const body = await readJson(request, config.maxRequestBytes);
+				return sendJson(response, 202, await workflows.resumeExecution(decodeURIComponent(resumeMatch[1]), body.input));
 			}
 			const executionMatch = url.pathname.match(/^\/api\/executions\/([^/]+)$/);
 			if (executionMatch && request.method === 'GET') {
@@ -216,6 +263,44 @@ async function readJson(request, maxBytes) {
 	return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
+async function readWebhookRequest(request, url, maxBytes) {
+	const chunks = [];
+	let bytes = 0;
+	for await (const chunk of request) {
+		bytes += chunk.length;
+		if (bytes > maxBytes) throw httpError(413, 'Webhook body exceeded the 1 MB limit');
+		chunks.push(chunk);
+	}
+	const rawBody = Buffer.concat(chunks);
+	const contentType = String(request.headers['content-type'] ?? '').toLowerCase();
+	let body = {};
+	if (rawBody.length) {
+		const text = rawBody.toString('utf8');
+		if (contentType.includes('json')) body = JSON.parse(text);
+		else if (contentType.includes('application/x-www-form-urlencoded')) body = Object.fromEntries(new URLSearchParams(text));
+		else body = text;
+	}
+	const query = {};
+	for (const key of url.searchParams.keys()) {
+		const values = url.searchParams.getAll(key);
+		query[key] = values.length > 1 ? values : values[0];
+	}
+	return {
+		method: request.method,
+		url: url.href,
+		path: url.pathname,
+		headers: request.headers,
+		query,
+		body,
+		params: {},
+		rawBody,
+		contentType: request.headers['content-type'] ?? '',
+		ip: request.socket.remoteAddress,
+		ips: request.socket.remoteAddress ? [request.socket.remoteAddress] : [],
+		readRawBody: async () => rawBody,
+	};
+}
+
 async function sendAsset(response, name, contentType) {
 	const body = await readFile(fileURLToPath(new URL(name, assets)));
 	response.writeHead(200, {
@@ -235,6 +320,31 @@ function sendJson(response, status, body, headers = {}) {
 		...headers,
 	});
 	response.end(status === 204 ? undefined : JSON.stringify(body));
+}
+
+		function sendCapturedWebhookResponse(response, captured, method) {
+	const status = Number(captured.statusCode) || 200;
+	const headers = captured.headers && typeof captured.headers === 'object' ? captured.headers : {};
+	const body = captured.body;
+	response.writeHead(status, { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers });
+	response.end(method === 'HEAD' ? undefined : body);
+}
+
+function sendWebhookResponse(response, captured, body, method) {
+	const status = Number(captured?.statusCode) || 200;
+	const capturedHeaders = captured?.headers && typeof captured.headers === 'object' ? captured.headers : {};
+	const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...capturedHeaders };
+	let output = body;
+	if (Buffer.isBuffer(body) || body instanceof Uint8Array) output = Buffer.from(body);
+	else if (body !== null && typeof body === 'object') {
+		headers['content-type'] ??= 'application/json; charset=utf-8';
+		output = JSON.stringify(body);
+	} else {
+		headers['content-type'] ??= 'text/plain; charset=utf-8';
+		output = String(body ?? '');
+	}
+	response.writeHead(status, headers);
+	response.end(method === 'HEAD' ? undefined : output);
 }
 
 function httpError(statusCode, message) {

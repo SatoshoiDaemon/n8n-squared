@@ -2,53 +2,52 @@
 
 ## Carregamento e execução
 
-Squared descobre pacotes pelo `package.json` (`n8n.nodes` e `n8n.credentials`) e pelos arquivos JSON auxiliares publicados pelo pacote. Esses JSON não são tratados como descrições executáveis. Ao encontrar um tipo usado pelo workflow, o registro resolve o arquivo `.node.js`, importa o módulo original, instancia sua classe e escolhe o `typeVersion` solicitado. `VersionedNodeType` é resolvido pela tabela de versões da classe.
+Squared descobre pacotes pelo `package.json` (`n8n.nodes` e `n8n.credentials`) e pelos arquivos auxiliares publicados. Esses JSON não são tratados como implementações. Quando um workflow usa um tipo, o registro resolve e importa o módulo `.node.js` original e escolhe o `typeVersion` solicitado, incluindo versões de `VersionedNodeType`.
 
-O carregamento de módulos é sob demanda. A inicialização lê manifests e descrições auxiliares; ela não importa todas as implementações JavaScript. Descrições completas vêm da classe real por `GET /api/node-types/:type/description`. O inventário protegido por autenticação está em `GET /api/node-types`.
+O carregamento JavaScript continua sob demanda: descobrir o catálogo não importa todas as classes. Descrições completas vêm da classe real em `GET /api/node-types/:type/description`; o inventário autenticado está em `GET /api/node-types`. Um node só aparece como validado depois de uma execução real aprovada, não apenas por carregar sua classe.
 
-O executor cria uma fachada `IExecuteFunctions` para cada chamada do node. Ela fornece os dados de entrada, parâmetros com expressões, node/workflow, modo e settings, credenciais do vault, estado de contexto e helpers comuns. Helpers desconhecidos falham com erro explícito. Um método `execute()` existente no módulo, por si só, não marca o node como executável: é necessário completar uma execução bem-sucedida; `validated` também exige um caso de regressão aprovado.
+Workflows com `connections` passam pelo executor de grafos TypeScript integrado à fila e ao histórico de execuções do Squared. Workflows nativos sem conexões continuam no executor legado. O runtime dá suporte a inputs e outputs numerados, canais de dados não-main, `supplyData()`, `pairedItem`, parâmetros e expressões usadas nos cenários, helpers de contexto, dados estáticos persistidos, espera e retomada, dados binários persistidos, retries, triggers, polling e webhooks. O node oficial `Code` inicia o `JavaScriptSandbox` publicado nos modos all-items e each-item, passa inputs/helpers do contexto e serializa os itens de saída no limite do task runner.
 
-O motor aceita os nodes de gatilho raiz para iniciar manualmente uma execução e executa nodes conectados conforme as saídas do node real. `If` e `Switch` mantêm suas portas de saída; itens seguem os caminhos que os nodes retornam. Workflows sem `connections` continuam no executor linear Squared existente.
+## Instalação persistente
 
-## Instalar pacotes fora do artefato Squared
+O registro usa `SQUARED_N8N_PACKAGES_DIR`; o padrão é `squared-data/n8n-nodes/node_modules`. O runner de CI instala versões pinadas e compatíveis de `n8n-nodes-base`, `@n8n/n8n-nodes-langchain`, `n8n-core` e `@n8n/backend-common` e inclui um seed de pacotes no ZIP de deploy. No primeiro boot, o instalador extrai o seed para a pasta persistente sem consultar o registry; reinício reutiliza a instalação. Em um redeploy, o pacote já persistido é mantido, ou o novo seed o repõe caso a pasta não exista. Dependências adicionais em desenvolvimento são instaladas sem remover as que já existem.
 
-O pacote oficial não é adicionado às dependências nem ao ZIP do Squared. Instale-o na pasta persistente de dados, junto com suas dependências, usando o gerenciador de pacotes do Node 24:
+Para reproduzir a instalação em desenvolvimento:
 
 ```powershell
-npm install --prefix squared-data/n8n-nodes n8n-nodes-base@2.42.5
+npm run n8n:install
 $env:SQUARED_N8N_PACKAGES_DIR = (Resolve-Path 'squared-data/n8n-nodes/node_modules').Path
-node src/main.js
+npm run compatibility:validate
 ```
 
-Sem `SQUARED_N8N_PACKAGES_DIR`, o padrão é `squared-data/n8n-nodes/node_modules`. Em Square Cloud, mantenha essa pasta no armazenamento persistente junto ao SQLite e à chave do Squared. Não coloque credenciais n8n exportadas nessa árvore.
+O instalador também é executado pela inicialização normal da aplicação. Os testes verificam extração do seed, pin de versões, instalação idempotente e preservação da árvore existente. Pacotes comunitários podem compartilhar o catálogo quando seus manifests publicam `n8n.nodes`; tipos que colidem, caminhos fora do pacote e arquivos `.ee.node.js` são recusados.
 
-Pacotes comunitários podem ser instalados na mesma pasta de módulos e entram no catálogo quando seu manifest publica `n8n.nodes`. Tipos que colidem, paths fora do pacote e arquivos `.ee.node.js` são recusados. O runtime não instala pacotes automaticamente.
+## Contratos integrados
 
-## Contratos disponíveis e limites
+A fachada de execução fornece dados de entrada e parâmetros, node/workflow, modo, IDs e configurações de execução, credenciais do vault, contexto global/node, dados estáticos, resolução de expressões e helpers de itens e binários. O motor preserva `pairedItem` e canais entre nodes, incluindo AI via `supplyData()`. A operação `Wait` persiste estado e retomada no storage. O scheduler restaura workflows ativos no início, ativa e desativa triggers, agenda polling, encaminha eventos para a fila de execução e fecha recursos ao desligar.
 
-A fachada implementa a parte do contrato exercitada pelos nodes validados, incluindo `getInputData`, `getNodeParameter` (expressões, defaults descritos, caminhos com arrays e extração de filtros), `getNode`, `getWorkflow`, `getMode`, `getExecutionId`, `getTimezone`, `getWorkflowSettings`, `continueOnFail`, `getCredentials`, `evaluateExpression`, `prepareOutputData`, `getWorkflowStaticData`, `getContext`, helpers de itens, binários em base64 no item e requisições HTTP simples. O node HTTP Request usou a classe publicada `HttpHeaderAuth`; o Squared carregou a definição real da credencial, obteve os valores somente pelo provedor do vault e aplicou a configuração genérica declarada pela credencial.
+O adaptador HTTP cobre métodos, headers, query, JSON/form/multipart, timeout, redirects, respostas JSON/texto/binárias, status de erro, resposta completa e paginação usada pelos nodes testados. Autenticação suporta definições declarativas genéricas e específicas por node, OAuth1 HMAC-SHA1 e OAuth2 com renovação de token gravada novamente no vault cifrado. Atualizações de credenciais usam a persistência existente do Squared.
 
-A validação atual cobre 25 tipos e 28 execuções contra o pacote npm `n8n-nodes-base@2.42.5`: `Set` v1 e v3.5, `If` v2.3, `Filter` v2.3, `Switch` v3.3, `NoOp` v1, `HTTP Request` v4.5, `Limit` v1, `Sort` v1, `Remove Duplicates` v2, `Rename Keys` v1, `Split Out` v1, `Item Lists` v3.1 (`splitOutItems`), `Aggregate` v1, `Date & Time` v2, `Crypto` v2 (`SHA-256`), `Summarize` v1.1, `Compare Datasets` v2.3, `Convert to/from Binary Data` v1, `Convert to File` v1.1, `Spreadsheet File` v2 (`CSV`), `Stop and Error` v1, `GitHub` v1 (`repository:get`), `XML` v1, `HTML` v1.2 e `Markdown` v1. As saídas são comparadas com resultados determinísticos no teste de regressão; HTTP Request e GitHub usam somente um servidor JSON local efêmero. A credencial oficial `GithubApi` aponta para esse servidor e a resposta confirma o header gerado pelo contrato `authenticate` do pacote. A validação também confere o erro intencional produzido pelo node original `Stop and Error`. Essa evidência cobre os caminhos e versões exercitados, não todas as opções desses nodes nem o catálogo inteiro. A matriz marca outros nodes como não executáveis até uma execução real passar.
+`Webhook` invoca a classe oficial e registra os caminhos/métodos descritos pela classe ao ativar o workflow; desativar, remover ou editar reconcilia as rotas. GET/HEAD/POST/PUT/PATCH/DELETE aceitam parâmetros de caminho e criam histórico da execução. Autenticação de entrada Basic/Header consulta o vault cifrado. `trigger()` e `poll()` são reconciliados pelo scheduler; triggers ativos são registrados novamente após reinício. O scheduler respeita `pollTimes` e usa 60 segundos quando o node não declara intervalo. Waits de tempo retomam automaticamente, e waits que permitem retomada manual aceitam `POST /api/executions/{id}/resume`. Os pacotes oficial base e LangChain são carregados do armazenamento persistente, sem copiar credenciais da instalação n8n de referência.
 
-Nodes que chamarem interfaces ausentes falham no ponto do contrato com o nome do helper/método indisponível. O pacote tem 444 entradas descobertas nesta instalação, mas só os 25 tipos acima estão validados. `MoveBinaryData`, `Convert to File` e `Spreadsheet File` foram executados com dados binários inline em base64; ainda não existe armazenamento persistente para payloads grandes. `trigger()`, `poll()` e `webhook()` ainda não são adaptados como contratos de node: endpoints webhook e execução manual do Squared iniciam o grafo, mas não chamam esses métodos do pacote. Contexto e estado estático são mantidos apenas durante uma execução; não há persistência entre execuções, trigger contínuo, polling, OAuth interativo nem `NodeExecuteFunctions` declarativo completo. O adaptador HTTP implementa a parte de requests exercitada e informa erro explícito para helpers ausentes. Nodes `Merge` v3 e `Wait` não carregam neste ambiente porque suas classes oficiais importam `n8n-core`, que por sua vez requer `@n8n/backend-common`; essa dependência da distribuição do n8n ainda não está disponível no pacote externo configurado para o runtime. O runtime não avalia o node Code e não executa código de workflow via `eval` ou `vm`.
+## Evidência atual e limites
 
-Os módulos n8n e comunitários são código JavaScript de terceiros executado no mesmo processo com os privilégios do Squared. Instale apenas pacotes confiáveis e mantenha o acesso de instalação sob controle administrativo. A pasta configurada não equivale a um sandbox para código hostil.
+O snapshot de referência contém 569 tipos: 444 no pacote base e 125 no LangChain. A matriz registra 30 tipos carregados, configuráveis, executáveis e validados, em 39 cenários determinísticos com classes publicadas de `n8n-nodes-base@2.42.5`. Ela mantém os 25 tipos anteriores e acrescenta `Code` v2, `Merge` v3, `Wait` v1, `Webhook` v1 e `RSS Feed Trigger` v1. Isso valida somente as versões/operações registradas; não significa que todas as operações ou opções de cada node estejam comprovadas. Veja [a matriz](compatibility-matrix.md), [a evidência por cenário](compatibility-runtime-results.json) e [o resumo de compatibilidade](n8n-compatibility.md).
+
+Os casos validados usam fixtures locais: HTTP e OAuth contra servidor local; RSS por servidor local; webhook via servidor Squared; credenciais sintéticas. O `Code` validado cobre JavaScript e `$input`/`$json`; Python, o proxy completo de dados do workflow e módulos externos ainda não estão configurados. Ainda não há validação de todos os nodes LangChain, OAuth1 em serviços externos, OAuth interativo de primeira autorização, JWT para webhooks, registro remoto por `webhookMethods`, `Respond to Webhook` ou todos os eventos/hooks especializados. O resolvedor de expressões e os helpers ainda implementam um subconjunto dos contratos de n8n. Código de node executa no mesmo processo do Squared; o diretório persistente não é sandbox para código hostil. Não foi feita comparação diferencial contra uma instalação n8n de referência.
 
 ## Testes e matriz
-
-Com o pacote instalado, execute:
 
 ```powershell
 $env:SQUARED_N8N_PACKAGES_DIR = (Resolve-Path 'squared-data/n8n-nodes/node_modules').Path
 npm run compatibility:validate
 npm run compatibility:matrix
 npm test
+npm run typecheck
 ```
 
-`compatibility:validate` executa workflows determinísticos sobre classes do pacote instalado e grava `compatibility-runtime-results.json`; a matriz cruza esses resultados com os 569 manifests da árvore histórica. Sem pacote instalado, a suíte opcional pula a integração, e a matriz conserva o último relatório versionado. A validação não é uma comparação diferencial com n8n.
+`compatibility:validate` executa workflows determinísticos contra classes instaladas e grava `compatibility-runtime-results.json`. A geração da matriz combina essa evidência com os manifests descobertos. Tipos não exercitados continuam descobertos ou carregados, e falhas incluem o método/contrato faltante quando identificado.
 
 ## Licenças
 
-O adaptador e o motor Squared são código original. Os pacotes `n8n-nodes-base`, `n8n-workflow` e demais pacotes do monorepo n8n são regidos pela licença sustentável do n8n; arquivos `.ee.` pertencem à licença Enterprise e não são carregados pelo Squared. Esses componentes não são copiados para o código ou artefato do Squared, não recebem relicenciamento Apache-2.0 e devem ser obtidos e distribuídos conforme seus próprios termos. Nodes comunitários mantêm as licenças declaradas por seus autores.
-
-Consulte a [licença da comunidade n8n](https://github.com/n8n-io/n8n-docs/blob/main/docs/n8n-community-license/README.md), a [análise oficial de composição e licenças](https://github.com/n8n-io/n8n/blob/master/security/sca/README.md) e o [loader oficial de nodes e credenciais](https://github.com/n8n-io/n8n/blob/master/packages/cli/src/load-nodes-and-credentials.ts).
+O adaptador e o motor Squared são código original. O seed de deploy contém pacotes publicados do n8n e dependências com seus próprios termos e avisos de licença; arquivos `.ee.` não são carregados. O seed mantém os arquivos de licença incluídos por cada pacote e não relicencia essas dependências. Nodes comunitários mantêm as licenças declaradas por seus autores.

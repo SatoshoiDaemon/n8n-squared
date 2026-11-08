@@ -19,7 +19,9 @@ on:
 jobs:
   runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
+    env:
+      SQUARED_N8N_PACKAGES_DIR: ${{ github.workspace }}/squared-data/n8n-nodes/node_modules
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,17 +29,25 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Install pinned official n8n runtime packages
+        run: npm run n8n:install
+      - name: Execute published node compatibility scenarios
+        run: npm run compatibility:validate
+      - name: Regenerate and verify compatibility matrix
+        run: |
+          npm run compatibility:matrix
+          git diff --exit-code -- docs/squared/compatibility-matrix.json docs/squared/compatibility-matrix.md docs/squared/compatibility-runtime-results.json
       - run: npm test
       - run: npm run build
       - name: Package Squared 0.1.0 for Square Cloud
         run: npm run package:squarecloud
         env:
-          SQUARED_MEMORY_MB: '1024'
+          SQUARED_MEMORY_MB: '3072'
       - name: Verify Square Cloud package
         id: verify
         run: npm run verify:squarecloud
         env:
-          SQUARED_MEMORY_MB: '1024'
+          SQUARED_MEMORY_MB: '3072'
       - run: npm run smoke:squarecloud
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.verify.outcome == 'success' }}
@@ -71,7 +81,7 @@ jobs:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/squared-first-boot')) }}
     needs: runtime
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     permissions:
       contents: read
     concurrency:
@@ -91,4 +101,4 @@ jobs:
         env:
           SQUARECLOUD_API_KEY: ${{ secrets.SQUARECLOUD_API_KEY }}
           SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
-          SQUARED_MEMORY_MB: '1024'
+          SQUARED_MEMORY_MB: '3072'

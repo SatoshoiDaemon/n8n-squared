@@ -2,10 +2,140 @@
   "package": "n8n-nodes-base",
   "packageVersion": "2.42.5",
   "packageSource": "installed npm package loaded from SQUARED_N8N_PACKAGES_DIR",
-  "nodesDiscovered": 444,
-  "deterministicExecutions": 28,
+  "nodesDiscovered": 569,
+  "deterministicExecutions": 42,
   "differentialAgainstN8n": false,
   "nodes": [
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.code",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.continueOnFail",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getMode",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.normalizeItems",
+        "IExecuteFunctions.startJob",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Code v2 runs a published JavaScript sandbox job over linked input items",
+          "operation": "mode=runOnceForAllItems",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.continueOnFail",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.normalizeItems",
+            "IExecuteFunctions.startJob",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "processed": true
+              },
+              {
+                "id": 2,
+                "processed": true
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "processed": true
+              },
+              {
+                "id": 2,
+                "processed": true
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 2,
+          "test": "Code v2 runs a published JavaScript sandbox job once for each input item",
+          "operation": "mode=runOnceForEachItem",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.continueOnFail",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.normalizeItems",
+            "IExecuteFunctions.startJob",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "processed": true
+              },
+              {
+                "id": 2,
+                "processed": true
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "processed": true
+              },
+              {
+                "id": 2,
+                "processed": true
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
     {
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
@@ -36,6 +166,156 @@
         {
           "typeVersion": 2.3,
           "test": "Compare Datasets v2.3 joins two input ports and routes matching items",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "value": "same"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "value": "same"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.compression",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "IExecuteFunctions.helpers.getBinaryDataBuffer",
+        "IExecuteFunctions.helpers.prepareBinaryData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Compression v1.1 compresses real binary data with gzip",
+          "operation": "operation=compress",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "result": "gunzip(compressed.binary.compressed) equals the input binary payload"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "binary": [
+              {
+                "compressed": {
+                  "data": "<gzip payload verified by gunzip>"
+                }
+              }
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1.1,
+          "test": "Compression v1.1 decompresses gzip binary data and restores its bytes",
+          "operation": "operation=decompress",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "result": "gunzip output binary restored0 equals the original bytes"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "binary": [
+              {
+                "restored0": {
+                  "data": "b2ZmaWNpYWwgY29tcHJlc3Npb24gYmluYXJ5IGZpeHR1cmU=",
+                  "fileName": "payload.txt",
+                  "fileExtension": "txt",
+                  "fileSize": "35 B",
+                  "mimeType": "text/plain",
+                  "fileType": "text"
+                }
+              }
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -67,6 +347,35 @@
         {
           "typeVersion": 2,
           "test": "Crypto v2 hashes a fixed string with SHA-256",
+          "operation": "action=hash",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -99,6 +408,36 @@
         {
           "typeVersion": 2,
           "test": "Date & Time v2 formats a fixed date deterministically",
+          "operation": "operation=formatDate",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getTimezone",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "tag": "fixed",
+                "formattedDate": "2024-01-02"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "tag": "fixed",
+                "formattedDate": "2024-01-02"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -132,6 +471,136 @@
         {
           "typeVersion": 1.1,
           "test": "Convert to File v1.1 encodes a JSON string into real binary data",
+          "operation": "operation=toText",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {}
+            ],
+            "binary": [
+              {
+                "file": {
+                  "data": "SGVsbG8=",
+                  "fileName": "hello.txt",
+                  "fileExtension": "txt",
+                  "fileSize": "5 B",
+                  "mimeType": "text/plain",
+                  "fileType": "text"
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {}
+            ],
+            "binary": [
+              {
+                "file": {
+                  "data": "SGVsbG8=",
+                  "fileName": "hello.txt",
+                  "fileExtension": "txt",
+                  "fileSize": "5 B",
+                  "mimeType": "text/plain",
+                  "fileType": "text"
+                }
+              }
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.extractFromFile",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getWorkflowSettings",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "IExecuteFunctions.helpers.detectBinaryEncoding",
+        "IExecuteFunctions.helpers.getBinaryDataBuffer",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Extract from File v1.1 parses JSON from the binary data helper",
+          "operation": "operation=fromJson",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflowSettings",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "IExecuteFunctions.helpers.detectBinaryEncoding",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "parsed": {
+                  "ok": true,
+                  "items": [
+                    1,
+                    2
+                  ]
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "parsed": {
+                  "ok": true,
+                  "items": [
+                    1,
+                    2
+                  ]
+                }
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -166,6 +635,40 @@
         {
           "typeVersion": 2.3,
           "test": "Filter v2.3 true and false outputs",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "allow": true
+              },
+              {
+                "allow": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "allow": true
+              },
+              {
+                "allow": false
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -202,6 +705,50 @@
         {
           "typeVersion": 1,
           "test": "GitHub repository:get uses the published node and GithubApi credential against the local fixture",
+          "operation": "resource=repository;operation=get",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.constructExecutionMetaData",
+            "IExecuteFunctions.helpers.requestWithAuthentication",
+            "IExecuteFunctions.helpers.returnJsonArray",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/repos/squared/fixture",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": true,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/repos/squared/fixture",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": true,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -235,6 +782,34 @@
         {
           "typeVersion": 1.2,
           "test": "HTML v1.2 extracts a CSS-selected text value",
+          "operation": "operation=extractHtmlContent",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "heading": "Squared"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "heading": "Squared"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -264,7 +839,7 @@
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.helpers",
-        "IExecuteFunctions.helpers.request",
+        "IExecuteFunctions.helpers.requestOAuth1",
         "IExecuteFunctions.sendMessageToUI",
         "INodeExecutionData",
         "INodeType"
@@ -280,11 +855,204 @@
         {
           "typeVersion": 4.5,
           "test": "HTTP Request v4.5 to local controlled JSON fixture",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getContext",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.request",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/fixture",
+                "query": "local",
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/fixture",
+                "query": "local",
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         },
         {
           "typeVersion": 4.5,
           "test": "HTTP Request v4.5 applies a real HttpHeaderAuth credential",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getContext",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.request",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/fixture",
+                "query": null,
+                "headerCredentialAccepted": true,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/fixture",
+                "query": null,
+                "headerCredentialAccepted": true,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": false
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 4.5,
+          "test": "HTTP Request v4.5 refreshes and persists an expired OAuth2 token",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getContext",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.requestOAuth2",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/oauth-resource",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": true,
+                "oauth1CredentialAccepted": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/oauth-resource",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": true,
+                "oauth1CredentialAccepted": false
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 4.5,
+          "test": "HTTP Request v4.5 signs a request with the published OAuth1 credential",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getContext",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.requestOAuth1",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/oauth1-resource",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": true
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "method": "GET",
+                "path": "/oauth1-resource",
+                "query": null,
+                "headerCredentialAccepted": false,
+                "githubCredentialAccepted": false,
+                "oauthCredentialAccepted": false,
+                "oauth1CredentialAccepted": true
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -319,6 +1087,40 @@
         {
           "typeVersion": 2.3,
           "test": "If v2.3 true and false outputs",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "allow": true
+              },
+              {
+                "allow": false
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "allow": true
+              },
+              {
+                "allow": false
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -354,6 +1156,44 @@
         {
           "typeVersion": 3.1,
           "test": "Item Lists v3.1 executes the published splitOutItems operation",
+          "operation": "resource=itemList;operation=splitOutItems",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": 7,
+                "values": "a"
+              },
+              {
+                "keep": 7,
+                "values": "b"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": 7,
+                "values": "a"
+              },
+              {
+                "keep": 7,
+                "values": "b"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -386,6 +1226,157 @@
         {
           "typeVersion": 1,
           "test": "Markdown v1 converts HTML using the published converter",
+          "operation": "mode=htmlToMarkdown",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.returnJsonArray",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "markdown": "# Squared\n\nHello **world**"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "markdown": "# Squared\n\nHello **world**"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.merge",
+      "version": [
+        1,
+        2,
+        2.1,
+        3,
+        3.1,
+        3.2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeInputs",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 3.2,
+          "test": "Merge v3.2 appends items from two real input ports",
+          "operation": "mode=append",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeInputs",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              },
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              },
+              {
+                "id": "a"
+              },
+              {
+                "id": "b"
+              }
+            ],
+            "binary": [
+              {},
+              {},
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.2,
+          "test": "Merge v3.2 combines items from two real input ports by position",
+          "operation": "mode=combine;combineBy=combineByPosition",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeInputs",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "leftValue": "left",
+                "rightValue": "right"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "leftValue": "left",
+                "rightValue": "right"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -419,11 +1410,94 @@
         {
           "typeVersion": 1,
           "test": "Convert to/from Binary Data v1 converts JSON bytes using the published node",
+          "operation": "mode=jsonToBinary",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "binary": [
+              {
+                "payload": {
+                  "data": "aGVsbG8=",
+                  "fileName": "payload.txt",
+                  "fileExtension": "txt",
+                  "fileSize": "5 B",
+                  "mimeType": "text/plain",
+                  "fileType": "text"
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true
+              }
+            ],
+            "binary": [
+              {
+                "payload": {
+                  "data": "aGVsbG8=",
+                  "fileName": "payload.txt",
+                  "fileExtension": "txt",
+                  "fileSize": "5 B",
+                  "mimeType": "text/plain",
+                  "fileType": "text"
+                }
+              }
+            ]
+          },
           "status": "passed"
         },
         {
           "typeVersion": 1,
           "test": "Convert to/from Binary Data v1 parses inline JSON binary data",
+          "operation": "mode=binaryToJson",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "ok": true
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "ok": true
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -453,6 +1527,32 @@
         {
           "typeVersion": 1,
           "test": "NoOp v1 passes items unchanged",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "untouched": true
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "untouched": true
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -483,6 +1583,88 @@
         {
           "typeVersion": 1,
           "test": "Rename Keys v1 renames a configured JSON property",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "fresh": "value",
+                "keep": true
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": true,
+                "fresh": "value"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.rssFeedReadTrigger",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getMode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getWorkflowStaticData",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.httpRequest",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "RSS Feed Trigger v1 polls a local RSS feed and persists its last item date",
+          "operation": "poll:feedUrl",
+          "contracts": [
+            "IPollFunctions",
+            "IExecuteFunctions.helpers.httpRequest",
+            "IExecuteFunctions.getWorkflowStaticData"
+          ],
+          "expected": {
+            "firstPollTitles": [
+              "New event"
+            ],
+            "secondPollOutputItems": 0,
+            "persistedLastItemDate": "2999-01-01T00:00:00.000Z"
+          },
+          "observed": {
+            "firstPollTitles": [
+              "New event"
+            ],
+            "secondPollOutputItems": 0,
+            "persistedLastItemDate": "2999-01-01T00:00:00.000Z"
+          },
           "status": "passed"
         }
       ],
@@ -521,11 +1703,75 @@
         {
           "typeVersion": 3.5,
           "test": "Set v3.5 expression and keep input fields",
+          "operation": "mode=manual",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": "from-input",
+                "keep": 7,
+                "result": "from-input"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": "from-input",
+                "keep": 7,
+                "result": "from-input"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         },
         {
           "typeVersion": 1,
           "test": "Set v1 expression and keep input fields",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": "version-one",
+                "keep": 8,
+                "legacyResult": "version-one"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": "version-one",
+                "keep": 8,
+                "legacyResult": "version-one"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -559,6 +1805,46 @@
         {
           "typeVersion": 2,
           "test": "Spreadsheet File v2 reads deterministic CSV binary data into JSON items",
+          "operation": "operation=fromFile",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "name": "Ada",
+                "age": "37"
+              },
+              {
+                "name": "Grace",
+                "age": "85"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "name": "Ada",
+                "age": "37"
+              },
+              {
+                "name": "Grace",
+                "age": "85"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -575,7 +1861,6 @@
         "IExecuteFunctions",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
-        "INodeExecutionData",
         "INodeType"
       ],
       "compatibility": {
@@ -589,6 +1874,21 @@
         {
           "typeVersion": 1,
           "test": "Stop and Error v1 propagates its configured workflow error",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "failed",
+            "errorIncludes": "intentional fixture error"
+          },
+          "observed": {
+            "status": "failed",
+            "error": "Node Stop and Error failed: intentional fixture error"
+          },
           "status": "passed"
         }
       ],
@@ -625,6 +1925,228 @@
         {
           "typeVersion": 3.3,
           "test": "Switch v3.3 rule outputs and fallback none",
+          "operation": "mode=rules",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "status": "active"
+              },
+              {
+                "status": "inactive"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "status": "active"
+              },
+              {
+                "status": "inactive"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.wait",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.evaluateExpression",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.putExecutionToWait",
+        "IExecuteFunctions.setMetadata",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Wait v1.1 stores and resumes a deterministic execution with resume=timeInterval",
+          "operation": "resume=timeInterval",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.putExecutionToWait",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "firstStatus": "waiting",
+            "resumedStatus": "succeeded",
+            "output": [
+              {
+                "resumed": true
+              }
+            ]
+          },
+          "observed": {
+            "firstStatus": "waiting",
+            "resumedStatus": "succeeded",
+            "output": [
+              {
+                "resumed": true
+              }
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1.1,
+          "test": "Wait v1.1 stores and resumes a deterministic execution with resume=webhook",
+          "operation": "resume=webhook",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.evaluateExpression",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.putExecutionToWait",
+            "IExecuteFunctions.setMetadata",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "firstStatus": "waiting",
+            "resumedStatus": "succeeded",
+            "output": [
+              {
+                "resumedBy": "manual-request"
+              }
+            ]
+          },
+          "observed": {
+            "firstStatus": "waiting",
+            "resumedStatus": "succeeded",
+            "output": [
+              {
+                "resumedBy": "manual-request"
+              }
+            ]
+          },
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.webhook",
+      "version": [
+        1,
+        1.1,
+        2,
+        2.1,
+        2.2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getMode",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getNodeWebhookUrl",
+        "IExecuteFunctions.getRequestObject",
+        "IExecuteFunctions.getResponseObject",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "activation registers the official Webhook path and deactivation removes it",
+          "operation": "register/delete:POST /webhook/{workflowId}/webhook/fixture-hook",
+          "contracts": [
+            "INodeTypeDescription.webhooks",
+            "IPollFunctions/webhook activation registry"
+          ],
+          "expected": {
+            "registered": true,
+            "removedAfterDeactivation": true
+          },
+          "observed": {
+            "registered": true,
+            "removedAfterDeactivation": true
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1.1,
+          "test": "Webhook v1.1 POST body and query reach the real downstream execution",
+          "operation": "webhook:POST",
+          "contracts": [
+            "IWebhookFunctions",
+            "IExecuteFunctions.getRequestObject",
+            "IExecuteFunctions.getBodyData",
+            "IExecuteFunctions.getQueryData"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "webhookResponse": "Fixture accepted",
+            "body": {
+              "event": "node-runtime"
+            },
+            "query": {
+              "source": "fixture"
+            }
+          },
+          "observed": {
+            "status": "succeeded",
+            "webhookResponse": "Fixture accepted",
+            "output": [
+              {
+                "headers": {
+                  "content-type": "application/json"
+                },
+                "params": {},
+                "query": {
+                  "source": "fixture"
+                },
+                "body": {
+                  "event": "node-runtime"
+                },
+                "webhookUrl": "http://127.0.0.1/webhook/squared-compatibility-webhook-fixture",
+                "executionMode": "production"
+              }
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -655,6 +2177,37 @@
         {
           "typeVersion": 1,
           "test": "XML v1 parses XML into a JSON object",
+          "operation": "mode=xmlToJson",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "root": {
+                  "name": "Squared"
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "root": {
+                  "name": "Squared"
+                }
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -685,6 +2238,39 @@
         {
           "typeVersion": 1,
           "test": "Aggregate v1 groups a selected field into one item",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": [
+                  1,
+                  2
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "value": [
+                  1,
+                  2
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -715,6 +2301,33 @@
         {
           "typeVersion": 1,
           "test": "Limit v1 returns the configured first items",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -748,6 +2361,41 @@
         {
           "typeVersion": 2,
           "test": "Remove Duplicates v2 removes repeated input items",
+          "operation": "operation=removeDuplicateInputItems",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -778,6 +2426,44 @@
         {
           "typeVersion": 1,
           "test": "Split Out v1 expands an array while keeping other fields",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": 7,
+                "values": "a"
+              },
+              {
+                "keep": 7,
+                "values": "b"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "keep": 7,
+                "values": "a"
+              },
+              {
+                "keep": 7,
+                "values": "b"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -808,6 +2494,40 @@
         {
           "typeVersion": 1,
           "test": "Sort v1 orders items using its declared field configuration",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1
+              },
+              {
+                "id": 2
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -840,6 +2560,34 @@
         {
           "typeVersion": 1.1,
           "test": "Summarize v1.1 aggregates numeric input fields",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "sum_amount": 10
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "sum_amount": 10
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
           "status": "passed"
         }
       ],
@@ -859,6 +2607,22 @@
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
       "credentialType": "httpHeaderAuth",
+      "loaded": true,
+      "configurable": true,
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "credentialType": "oAuth1Api",
+      "loaded": true,
+      "configurable": true,
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "credentialType": "oAuth2Api",
       "loaded": true,
       "configurable": true,
       "knownFailures": []

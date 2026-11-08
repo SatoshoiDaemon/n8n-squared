@@ -1,5 +1,6 @@
 import { evaluateN8nExpression, resolveParameterTree, type ExpressionItem, type N8nExpressionContext } from '../expressions/n8n-expression.ts';
 import { buildWorkflowGraph, type WorkflowConnection, type WorkflowDocument, type WorkflowGraph, type WorkflowNodeDocument } from '../workflows/n8n-format.ts';
+import { createHmac, randomBytes } from 'node:crypto';
 import { extname } from 'node:path';
 
 export interface NodeExecutionData extends ExpressionItem {
@@ -9,15 +10,16 @@ export interface NodeExecutionData extends ExpressionItem {
 	error?: { message: string; description?: string; [key: string]: unknown };
 }
 
-export type NodeOutput = NodeExecutionData[][] | Record<string, NodeExecutionData[][]> | null | undefined;
+export type NodeOutput = NodeExecutionData[][] | Record<string, unknown[][]> | null | undefined;
 
 export interface GraphNodeContext {
 	readonly executionId: string;
-	readonly mode: 'manual' | 'webhook' | 'schedule' | 'trigger';
+	readonly mode: 'manual' | 'webhook' | 'schedule' | 'trigger' | 'poll';
 	readonly node: WorkflowNodeDocument;
 	readonly workflow: WorkflowDocument;
 	readonly signal: AbortSignal;
 	getInputData(inputIndex?: number, connectionType?: string): NodeExecutionData[];
+	getInputConnectionData(connectionType: string, inputIndex?: number, itemIndex?: number): Promise<unknown>;
 	getNodeParameter<T = unknown>(parameterName: string, itemIndex?: number, fallbackValue?: T, options?: NodeParameterOptions): T;
 	evaluateExpression(expression: string, itemIndex?: number, fallbackValue?: unknown, throwOnMissing?: boolean): unknown;
 	getNode(): WorkflowNodeDocument;
@@ -29,12 +31,51 @@ export interface GraphNodeContext {
 	getWorkflowStaticData(type: string): Record<string, unknown>;
 	continueOnFail(): boolean;
 	getExecutionCancelSignal(): AbortSignal;
+	getNodeWebhookUrl(name: string): string | undefined;
+	getParentNodes(nodeName: string): WorkflowNodeDocument[];
+	setMetadata(metadata: Record<string, unknown>): void;
+	getMetadata(): Record<string, unknown>;
+	getRequestObject(): GraphWebhookRequest;
+	getResponseObject(): Record<string, unknown>;
+	getWebhookName(): string;
+	getBodyData(): unknown;
+	getQueryData(): Record<string, unknown>;
+	getHeaderData(): Record<string, string | string[] | undefined>;
+	getParamsData(): Record<string, unknown>;
 	getContext(type: 'flow' | 'node'): Record<string, unknown>;
 	sendMessageToUI(...args: unknown[]): void;
 	prepareOutputData<T extends NodeExecutionData[]>(items: T, inputIndex?: number): Promise<[T]>;
+	putExecutionToWait(waitTill: Date, options?: { acceptsResumeRequest?: boolean }): Promise<void>;
+	getPendingWait(): GraphWaitState | undefined;
 	readonly helpers: Record<string, (...args: any[]) => any>;
 	readonly logger: Record<string, (...args: unknown[]) => void>;
 	getCredentials(credentialType: string): Promise<Record<string, unknown>>;
+	updateCredentials(credentialType: string, credentials: Record<string, unknown>): Promise<void>;
+	emit(data: NodeExecutionData[][]): Promise<void>;
+}
+
+export interface GraphWaitState {
+	nodeName: string;
+	resumeAt: string | null;
+	acceptsResumeRequest: boolean;
+	input: NodeExecutionData[];
+	metadata?: Record<string, unknown>;
+}
+
+export interface GraphWebhookRequest {
+	method: string;
+	url: string;
+	path: string;
+	headers: Record<string, string | string[] | undefined>;
+	query: Record<string, unknown>;
+	body: unknown;
+	params: Record<string, unknown>;
+	rawBody?: Uint8Array;
+	webhookName?: string;
+	contentType?: string;
+	ip?: string;
+	ips?: string[];
+	readRawBody?: () => Promise<Uint8Array>;
 }
 
 export interface NodeParameterOptions {
@@ -49,18 +90,32 @@ export interface NodeAdapter {
 	type: string;
 	/** Exact typeVersion values supported by this implementation. */
 	versions: number[];
-	execute(context: GraphNodeContext): Promise<NodeOutput>;
+	execute?(context: GraphNodeContext): Promise<NodeOutput>;
+	trigger?(context: GraphNodeContext): Promise<unknown>;
+	poll?(context: GraphNodeContext): Promise<NodeOutput>;
+	webhook?(context: GraphNodeContext): Promise<unknown>;
+	supplyData?(context: GraphNodeContext): Promise<Record<string, { response: unknown }>>;
 }
 
-export interface CredentialProvider {
-	(reference: { id?: string; name: string }, credentialType: string, node: WorkflowNodeDocument): Promise<Record<string, unknown> | null>;
-}
+export type CredentialProvider = ((
+	reference: { id?: string; name: string },
+	credentialType: string,
+	node: WorkflowNodeDocument,
+) => Promise<Record<string, unknown> | null>) & {
+	update?: (
+		reference: { id?: string; name: string },
+		credentialType: string,
+		node: WorkflowNodeDocument,
+		credentials: Record<string, unknown>,
+	) => Promise<void>;
+};
 
 export interface GraphEngineLimits {
 	maxNodes?: number;
 	maxItems?: number;
 	maxRetries?: number;
 	maxRetryDelayMs?: number;
+	binaryStore?: { store(buffer: Buffer): Promise<string>; retrieve(id: string): Promise<Buffer> };
 }
 
 export interface GraphExecutionRequest {
@@ -68,6 +123,10 @@ export interface GraphExecutionRequest {
 	startNode?: string;
 	executionId?: string;
 	mode?: GraphNodeContext['mode'];
+	staticData?: Record<string, Record<string, unknown>>;
+	executionMetadata?: Record<string, unknown>;
+	initialOutput?: NodeExecutionData[][];
+	webhookRequest?: GraphWebhookRequest;
 }
 
 export interface NodeRunRecord {
@@ -75,7 +134,7 @@ export interface NodeRunRecord {
 	nodeName: string;
 	nodeType: string;
 	typeVersion?: number;
-	status: 'succeeded' | 'skipped' | 'failed' | 'continued';
+	status: 'succeeded' | 'skipped' | 'failed' | 'continued' | 'waiting';
 	attempts: number;
 	inputItems: number;
 	outputItems: number;
@@ -85,10 +144,13 @@ export interface NodeRunRecord {
 export interface GraphExecutionResult {
 	id: string;
 	workflowId?: string;
-	status: 'succeeded' | 'failed';
+	status: 'succeeded' | 'failed' | 'waiting';
 	output: NodeExecutionData[];
 	outputsByNode: Record<string, NodeExecutionData[][]>;
 	nodeRuns: NodeRunRecord[];
+	staticData: Record<string, Record<string, unknown>>;
+	metadata: Record<string, unknown>;
+	waitState?: GraphWaitState;
 	error?: string;
 }
 
@@ -151,13 +213,14 @@ export class NodeAdapterRegistry {
  * directed acyclic graphs with multiple ports, joins, item data, error outputs,
  * version-specific adapters, and the legacy Squared linear format.
  *
- * Cycles, wait/resume, trigger registration, non-main AI connection types, and
- * n8n helper/context methods not implemented by the package adapter fail explicitly.
+	 * Cycles and non-main AI connection types fail explicitly. Published node
+	 * adapters supply execution, poll, and trigger lifecycle hooks on demand.
  */
 export class GraphExecutionEngine {
-	private readonly limits: Required<GraphEngineLimits>;
+	private readonly limits: Required<Omit<GraphEngineLimits, 'binaryStore'>>;
 	private readonly registry: NodeAdapterRegistry;
 	private readonly credentialProvider?: CredentialProvider;
+	private readonly binaryStore?: GraphEngineLimits['binaryStore'];
 
 	constructor(
 		registry: NodeAdapterRegistry,
@@ -166,6 +229,7 @@ export class GraphExecutionEngine {
 	) {
 		this.registry = registry;
 		this.credentialProvider = credentialProvider;
+		this.binaryStore = limits.binaryStore;
 		this.limits = {
 			maxNodes: limits.maxNodes ?? 10_000,
 			maxItems: limits.maxItems ?? 50_000,
@@ -179,8 +243,11 @@ export class GraphExecutionEngine {
 		const executionId = request.executionId ?? globalThis.crypto.randomUUID();
 		const mode = request.mode ?? 'manual';
 		const nodeRuns: NodeRunRecord[] = [];
-		const outputsByNode = new Map<string, Record<string, NodeExecutionData[][]>>();
-		const contextData = new Map<string, Record<string, unknown>>();
+		const outputsByNode = new Map<string, Record<string, unknown[][]>>();
+		const contextData = new Map<string, Record<string, unknown>>(
+			Object.entries(request.staticData ?? {}).map(([key, value]) => [key, { ...value }]),
+		);
+		const executionMetadata = new Map<string, unknown>(Object.entries(request.executionMetadata ?? {}));
 		let workflowId = typeof graph.document.id === 'string' ? graph.document.id : undefined;
 
 		try {
@@ -190,18 +257,30 @@ export class GraphExecutionEngine {
 			const start = selectStartNode(graph, request.startNode);
 			const reachable = reachableNodeNames(graph, start.name);
 			const order = topologicalOrder(graph, reachable);
-			for (const connection of graph.connections) {
-				if (reachable.has(connection.source.name) && connection.sourceType !== 'main') {
-					throw new Error(`Connection type ${connection.sourceType} is not supported by the graph engine`);
-				}
-				if (reachable.has(connection.target.name) && connection.targetType !== 'main') {
-					throw new Error(`Connection type ${connection.targetType} is not supported by the graph engine`);
-				}
-			}
-
 			const triggerItems = normalizeInput(request.input);
 			assertItemLimit(triggerItems, this.limits.maxItems);
-			outputsByNode.set(start.name, { main: [triggerItems] });
+			let initialOutput = request.initialOutput?.map((port) => port.map(normalizeItem)) ?? [triggerItems];
+			let initialOutputRecord: Record<string, unknown[][]> = { main: initialOutput };
+			if (mode === 'poll') {
+				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
+				const adapter = await this.registry.resolve(start.type, version);
+				if (!adapter?.poll) throw new Error(`Node ${start.type}@${version} does not implement poll()`);
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore });
+				initialOutputRecord = normalizeOutput(await adapter.poll(context), getOutputPortCount(graph, start.name), []);
+				initialOutput = nodeExecutionPorts(initialOutputRecord.main ?? []);
+			}
+			if (mode === 'webhook' && request.webhookRequest) {
+				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
+				const adapter = await this.registry.resolve(start.type, version);
+				if (!adapter?.webhook) throw new Error(`Node ${start.type}@${version} does not implement webhook()`);
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, webhookRequest: request.webhookRequest });
+				const result = await adapter.webhook(context);
+				const workflowData = isObject(result) && 'workflowData' in result ? result.workflowData : result;
+				initialOutputRecord = normalizeOutput(workflowData as NodeOutput, getOutputPortCount(graph, start.name), []);
+				initialOutput = nodeExecutionPorts(initialOutputRecord.main ?? []);
+			}
+			assertItemLimit(Object.values(initialOutputRecord).flatMap((ports) => ports.flat()), this.limits.maxItems);
+			outputsByNode.set(start.name, initialOutputRecord);
 			nodeRuns.push({
 				nodeId: start.id,
 				nodeName: start.name,
@@ -210,16 +289,18 @@ export class GraphExecutionEngine {
 				status: 'succeeded',
 				attempts: 0,
 				inputItems: triggerItems.length,
-				outputItems: triggerItems.length,
+				outputItems: Object.values(initialOutputRecord).flatMap((ports) => ports.flat()).length,
 			});
 
 			for (const node of order) {
 				if (node.name === start.name) continue;
 				const incoming = (graph.incoming.get(node.name) ?? []).filter((connection) => reachable.has(connection.source.name));
-				if (incoming.length === 0) continue;
+				const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
+				const adapter = await this.registry.resolve(node.type, version);
+				if (incoming.length === 0 && !adapter?.supplyData) continue;
 				const inputPorts = collectInputPorts(incoming, outputsByNode);
 				const inputItems = inputPorts.flatMap((port) => port);
-				if (inputItems.length === 0) {
+				if (inputItems.length === 0 && !incoming.some((connection) => connection.targetType !== 'main') && !adapter?.supplyData) {
 					nodeRuns.push(makeRunRecord(node, 'skipped', 0, 0, 0));
 					outputsByNode.set(node.name, { main: [] });
 					continue;
@@ -233,12 +314,10 @@ export class GraphExecutionEngine {
 					continue;
 				}
 
-				const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
-				const adapter = await this.registry.resolve(node.type, version);
-				if (!adapter) {
+				if (!adapter?.execute && !adapter?.supplyData) {
 					const supported = this.registry.versions(node.type);
 					const versionHint = supported.length ? `; supported versions: ${supported.join(', ')}` : '';
-					throw new Error(`No executable adapter for ${node.type}@${version}${versionHint}`);
+					throw new Error(`No execute() adapter for ${node.type}@${version}${versionHint}`);
 				}
 				const context = createNodeContext({
 					graph,
@@ -248,7 +327,9 @@ export class GraphExecutionEngine {
 					executionId,
 					mode,
 					contextData,
+					executionMetadata,
 					credentialProvider: this.credentialProvider,
+					binaryStore: this.binaryStore,
 				});
 
 				let attempts = 0;
@@ -260,7 +341,11 @@ export class GraphExecutionEngine {
 				while (attempts < maxTries) {
 					attempts += 1;
 					try {
-						output = await adapter.execute(context);
+						if (adapter.execute && (inputItems.length > 0 || !adapter.supplyData)) output = await adapter.execute(context);
+						else {
+							const supplied = await adapter.supplyData!(context);
+							output = Object.fromEntries(Object.entries(supplied ?? {}).map(([type, value]) => [type, [[value.response]]]));
+						}
 						nodeError = undefined;
 						break;
 					} catch (error) {
@@ -289,10 +374,25 @@ export class GraphExecutionEngine {
 					throw new Error(`Node ${node.name} failed: ${message}`);
 				}
 
-				const normalizedOutput = normalizeOutput(output, portCount);
+				const normalizedOutput = normalizeOutput(output, portCount, inputPorts);
 				const outputItems = Object.values(normalizedOutput).flatMap((ports) => ports.flat()).length;
 				assertItemLimit(Object.values(normalizedOutput).flatMap((ports) => ports.flat()), this.limits.maxItems);
 				outputsByNode.set(node.name, normalizedOutput);
+				const waitState = context.getPendingWait();
+				if (waitState) {
+					nodeRuns.push(makeRunRecord(node, 'waiting', attempts, inputItems.length, outputItems));
+					return {
+						id: executionId,
+						...(workflowId ? { workflowId } : {}),
+						status: 'waiting',
+						output: [],
+					outputsByNode: Object.fromEntries([...outputsByNode].map(([name, data]) => [name, nodeExecutionPorts(data.main ?? [])])),
+						nodeRuns,
+						staticData: snapshotContextData(contextData),
+						waitState: { ...waitState, nodeName: node.name, input: (normalizedOutput.main?.[0] ?? []).filter(isNodeExecutionData) },
+						metadata: snapshotExecutionMetadata(executionMetadata),
+					};
+				}
 				nodeRuns.push(makeRunRecord(node, 'succeeded', attempts, inputItems.length, outputItems));
 			}
 
@@ -304,9 +404,9 @@ export class GraphExecutionEngine {
 			}
 			const output = terminalNodes.flatMap((node) => {
 				const nodeOutput = outputsByNode.get(node.name)?.main ?? [];
-				return nodeOutput.flat();
+				return nodeExecutionPorts(nodeOutput).flat();
 			});
-			const outputRecord = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, data.main ?? []]));
+			const outputRecord = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, nodeExecutionPorts(data.main ?? [])]));
 			return {
 				id: executionId,
 				...(workflowId ? { workflowId } : {}),
@@ -314,6 +414,8 @@ export class GraphExecutionEngine {
 				output,
 				outputsByNode: outputRecord,
 				nodeRuns,
+				staticData: snapshotContextData(contextData),
+				metadata: snapshotExecutionMetadata(executionMetadata),
 			};
 		} catch (error) {
 			return {
@@ -321,11 +423,80 @@ export class GraphExecutionEngine {
 				...(workflowId ? { workflowId } : {}),
 				status: 'failed',
 				output: [],
-				outputsByNode: Object.fromEntries([...outputsByNode].map(([name, data]) => [name, data.main ?? []])),
+				outputsByNode: Object.fromEntries([...outputsByNode].map(([name, data]) => [name, nodeExecutionPorts(data.main ?? [])])),
 				nodeRuns,
+				staticData: snapshotContextData(contextData),
+				metadata: snapshotExecutionMetadata(executionMetadata),
 				error: safeErrorMessage(error),
 			};
 		}
+	}
+
+	async activateTrigger(
+		inputWorkflow: unknown,
+		startNode: string,
+		emit: (data: NodeExecutionData[][], staticData: Record<string, Record<string, unknown>>) => Promise<void>,
+		staticData: Record<string, Record<string, unknown>> = {},
+	): Promise<(() => void | Promise<void>) | undefined> {
+		const graph = buildWorkflowGraph(inputWorkflow);
+		const node = graph.nodesByName.get(startNode);
+		if (!node) throw new Error(`Trigger node ${startNode} was not found in the workflow`);
+		const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
+		const adapter = await this.registry.resolve(node.type, version);
+		if (!adapter?.trigger) return undefined;
+		const contextData = new Map<string, Record<string, unknown>>(
+			Object.entries(staticData).map(([key, value]) => [key, { ...value }]),
+		);
+		const executionMetadata = new Map<string, unknown>();
+		const context = createNodeContext({
+			graph,
+			node,
+			inputPorts: [],
+			outputsByNode: new Map(),
+			executionId: globalThis.crypto.randomUUID(),
+			mode: 'trigger',
+			contextData,
+			executionMetadata,
+			credentialProvider: this.credentialProvider,
+			binaryStore: this.binaryStore,
+			emit: async (data) => emit(data.map((port) => port.map(normalizeItem)), snapshotContextData(contextData)),
+		});
+		const result = await adapter.trigger(context);
+		if (typeof result === 'function') return result as () => void | Promise<void>;
+		if (result && typeof result === 'object' && typeof (result as { closeFunction?: unknown }).closeFunction === 'function') {
+			return (result as { closeFunction: () => void | Promise<void> }).closeFunction;
+		}
+		return undefined;
+	}
+
+	async prepareWebhook(inputWorkflow: unknown, nodeName: string, webhookRequest: GraphWebhookRequest, staticData: Record<string, Record<string, unknown>> = {}) {
+		const graph = buildWorkflowGraph(inputWorkflow);
+		const node = graph.nodesByName.get(nodeName);
+		if (!node) throw new Error(`Webhook node ${nodeName} was not found in the workflow`);
+		const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
+		const adapter = await this.registry.resolve(node.type, version);
+		if (!adapter?.webhook) throw new Error(`Node ${node.type}@${version} does not implement webhook()`);
+		const contextData = new Map<string, Record<string, unknown>>(
+			Object.entries(staticData).map(([key, value]) => [key, { ...value }]),
+		);
+		const executionMetadata = new Map<string, unknown>();
+		const response = createCapturedWebhookResponse();
+		const context = createNodeContext({
+			graph,
+			node,
+			inputPorts: [],
+			outputsByNode: new Map(),
+			executionId: globalThis.crypto.randomUUID(),
+			mode: 'webhook',
+			contextData,
+			executionMetadata,
+			credentialProvider: this.credentialProvider,
+			binaryStore: this.binaryStore,
+			webhookRequest,
+			webhookResponse: response,
+		});
+		const result = await adapter.webhook(context);
+		return { result, response, staticData: snapshotContextData(contextData) };
 	}
 }
 
@@ -333,21 +504,27 @@ function createNodeContext(args: {
 	graph: WorkflowGraph;
 	node: WorkflowNodeDocument;
 	inputPorts: NodeExecutionData[][];
-	outputsByNode: Map<string, Record<string, NodeExecutionData[][]>>;
+	outputsByNode: Map<string, Record<string, unknown[][]>>;
 	executionId: string;
 	mode: GraphNodeContext['mode'];
 	contextData: Map<string, Record<string, unknown>>;
+	executionMetadata: Map<string, unknown>;
 	credentialProvider?: CredentialProvider;
+	binaryStore?: GraphEngineLimits['binaryStore'];
+	emit?: (data: NodeExecutionData[][]) => Promise<void>;
+	webhookRequest?: GraphWebhookRequest;
+	webhookResponse?: Record<string, unknown>;
 }): GraphNodeContext {
-	const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, credentialProvider } = args;
+const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider, binaryStore } = args;
 	const abortController = new AbortController();
+	let pendingWait: Omit<GraphWaitState, 'nodeName' | 'input'> | undefined;
 	const flattenInputs = inputPorts.flat();
-	const priorNodeItems = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, (data.main ?? []).flat()]));
+	const priorNodeItems = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, nodeExecutionPorts(data.main ?? []).flat()]));
 	const baseContext = (itemIndex: number): N8nExpressionContext => ({
 		item: flattenInputs[itemIndex] ?? { json: {} },
 		inputItems: flattenInputs,
 		priorNodeItems,
-		execution: { id: executionId, mode },
+		execution: { id: executionId, mode, ...Object.fromEntries(executionMetadata) },
 		workflow: { id: graph.document.id, name: graph.document.name },
 	});
 	const parameterAtPath = (path: string): unknown => {
@@ -380,6 +557,12 @@ function createNodeContext(args: {
 			if (connectionType !== 'main') throw new Error(`Input connection type ${connectionType} is not supported by the graph engine`);
 			return inputPorts[inputIndex] ?? [];
 		},
+		async getInputConnectionData(connectionType: string, inputIndex = 0, itemIndex = 0) {
+			const connection = (graph.incoming.get(node.name) ?? []).find((item) => item.targetType === connectionType && item.targetInput === inputIndex);
+			if (!connection) throw new Error(`Node ${node.name} has no ${connectionType} input at index ${inputIndex}`);
+			const sourcePorts = outputsByNode.get(connection.source.name)?.[connection.sourceType] ?? [];
+			return sourcePorts[connection.sourceOutput]?.[itemIndex];
+		},
 		getNodeParameter<T = unknown>(parameterName: string, itemIndex = 0, fallbackValue?: T, options: NodeParameterOptions = {}): T {
 			const value = parameterAtPath(parameterName);
 			if (value === undefined) {
@@ -406,6 +589,35 @@ function createNodeContext(args: {
 		getWorkflowStaticData(type: string) { return contextDataFor(type); },
 		continueOnFail() { return node.continueOnFail === true || node.onError === 'continueErrorOutput' || node.onError === 'continueRegularOutput'; },
 		getExecutionCancelSignal() { return abortController.signal; },
+		getNodeWebhookUrl(_name: string) { return args.webhookRequest?.url; },
+		getParentNodes(nodeName: string) {
+			const parents = new Set<string>();
+			const pending = (graph.incoming.get(nodeName) ?? []).map((connection) => connection.source.name);
+			while (pending.length) {
+				const parent = pending.pop()!;
+				if (parents.has(parent)) continue;
+				parents.add(parent);
+				pending.push(...(graph.incoming.get(parent) ?? []).map((connection) => connection.source.name));
+			}
+			return [...parents].map((name) => graph.nodesByName.get(name)).filter((parent): parent is WorkflowNodeDocument => Boolean(parent));
+		},
+		setMetadata(values: Record<string, unknown>) {
+			for (const [key, value] of Object.entries(values)) executionMetadata.set(key, structuredClone(value));
+		},
+		getMetadata() { return snapshotExecutionMetadata(executionMetadata); },
+		getRequestObject() {
+			if (!args.webhookRequest) throw new Error('This node context is not attached to an HTTP webhook request');
+			return args.webhookRequest;
+		},
+		getResponseObject() {
+			if (!args.webhookRequest) throw new Error('This node context is not attached to an HTTP webhook request');
+			return args.webhookResponse ?? {};
+		},
+		getWebhookName() { return args.webhookRequest?.webhookName ?? 'default'; },
+		getBodyData() { return args.webhookRequest?.body; },
+		getQueryData() { return args.webhookRequest?.query ?? {}; },
+		getHeaderData() { return args.webhookRequest?.headers ?? {}; },
+		getParamsData() { return args.webhookRequest?.params ?? {}; },
 		getContext(type: 'flow' | 'node') {
 			const key = type === 'flow' ? 'flow' : `node:${node.id}`;
 			let value = contextData.get(key);
@@ -414,9 +626,36 @@ function createNodeContext(args: {
 		},
 		sendMessageToUI() {},
 		async prepareOutputData<T extends NodeExecutionData[]>(items: T) { return [items]; },
-		helpers: createBasicHelpers(() => flattenInputs, loadCredentials),
+		async putExecutionToWait(waitTill: Date, options: { acceptsResumeRequest?: boolean } = {}) {
+			const timestamp = waitTill instanceof Date ? waitTill.getTime() : Number.NaN;
+			if (!Number.isFinite(timestamp)) throw new Error('putExecutionToWait requires a valid deadline');
+			pendingWait = {
+				resumeAt: timestamp >= Date.parse('2999-01-01T00:00:00.000Z') ? null : new Date(timestamp).toISOString(),
+				acceptsResumeRequest: options.acceptsResumeRequest !== false,
+				metadata: snapshotExecutionMetadata(executionMetadata),
+			};
+		},
+		getPendingWait() {
+			return pendingWait ? { ...pendingWait, nodeName: node.name, input: [] } : undefined;
+		},
+		helpers: createBasicHelpers(() => flattenInputs, loadCredentials, binaryStore, async (credentialType, credentials) => {
+			const reference = node.credentials?.[credentialType];
+			if (!reference) throw new Error(`Node ${node.name} has no ${credentialType} credential reference`);
+			if (!credentialProvider?.update) throw new Error('Credential provider does not support encrypted credential updates');
+			await credentialProvider.update(reference, credentialType, node, credentials);
+		}),
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
 		async getCredentials(credentialType: string) { return loadCredentials(credentialType); },
+		async updateCredentials(credentialType: string, credentials: Record<string, unknown>) {
+			const reference = node.credentials?.[credentialType];
+			if (!reference) throw new Error(`Node ${node.name} has no ${credentialType} credential reference`);
+			if (!credentialProvider?.update) throw new Error('Credential provider does not support encrypted credential updates');
+			await credentialProvider.update(reference, credentialType, node, credentials);
+		},
+		async emit(data: NodeExecutionData[][]) {
+			if (!args.emit) throw new Error('This node context is not attached to an active trigger');
+			await args.emit(data);
+		},
 	};
 
 	function contextDataFor(type: string): Record<string, unknown> {
@@ -430,11 +669,21 @@ function createNodeContext(args: {
 function createBasicHelpers(
 	getInputs: () => NodeExecutionData[],
 	getCredentials: (credentialType: string) => Promise<Record<string, unknown>>,
+	binaryStore?: GraphEngineLimits['binaryStore'],
+	updateCredentials: (credentialType: string, credentials: Record<string, unknown>) => Promise<void> = async () => {
+		throw new Error('Credential provider does not support encrypted credential updates');
+	},
 ): GraphNodeContext['helpers'] {
 	const getBinaryData = (itemIndex: number, propertyName: string) => {
 		const binary = getInputs()[itemIndex]?.binary?.[propertyName];
 		if (!binary) throw new Error(`Binary data property ${propertyName} was not found on item ${itemIndex}`);
 		return binary;
+	};
+	const getBinaryBuffer = async (itemIndex: number, propertyName: string) => {
+		const metadata = getBinaryData(itemIndex, propertyName) as { data?: string; dataId?: string; mimeType?: string };
+		if (typeof metadata.data === 'string') return Buffer.from(metadata.data, 'base64');
+		if (typeof metadata.dataId === 'string' && binaryStore) return binaryStore.retrieve(metadata.dataId);
+		throw new Error('Binary data is stored by reference, but no persistent binary-data store is configured');
 	};
 	return {
 		returnJsonArray(items: unknown | unknown[]) {
@@ -467,28 +716,48 @@ function createBasicHelpers(
 		},
 		async requestOAuth2(credentialType: string, options: Record<string, unknown>, oauthOptions: Record<string, unknown> = {}) {
 			const credentials = await getCredentials(credentialType);
-			const token = findOAuthAccessToken(credentials);
-			if (!token) throw new Error(`Credential ${credentialType} has no OAuth2 access token`);
+			const accessToken = await getFreshOAuth2AccessToken(credentialType, credentials, oauthOptions, updateCredentials);
 			const headers = { ...(isObject(options.headers) ? options.headers : {}) };
-			headers.authorization = `${typeof oauthOptions.tokenType === 'string' ? oauthOptions.tokenType : 'Bearer'} ${token}`;
+			const tokenData = isObject(credentials.oauthTokenData) ? credentials.oauthTokenData : {};
+			headers.authorization = `${String(tokenData.token_type ?? oauthOptions.tokenType ?? 'Bearer')} ${accessToken}`;
 			return executeHttpRequest({ ...options, headers });
 		},
-		async requestOAuth1() { throw new Error('Squared does not implement OAuth 1 request signing yet'); },
+		async requestOAuth1(credentialType: string, options: Record<string, unknown>) {
+			const credentials = await getCredentials(credentialType);
+			return executeHttpRequest(signOAuth1Request(options, credentials));
+		},
+		async refreshOAuth2Token(credentialType: string, oauthOptions: Record<string, unknown> = {}) {
+			const credentials = await getCredentials(credentialType);
+			await getFreshOAuth2AccessToken(credentialType, credentials, { ...oauthOptions, forceRefresh: true }, updateCredentials);
+			return isObject(credentials.oauthTokenData) ? credentials.oauthTokenData : {};
+		},
+		async requestWithAuthenticationPaginated(
+			requestOptions: Record<string, unknown>,
+			itemIndex: number,
+			paginationOptions: Record<string, unknown>,
+			credentialType?: string,
+		) {
+			return requestPages(requestOptions, itemIndex, paginationOptions, credentialType, getInputs, getCredentials);
+		},
 		assertBinaryData(itemIndex: number, propertyName: string) {
 			return getBinaryData(itemIndex, propertyName);
 		},
 		async getBinaryDataBuffer(itemIndex: number, propertyName: string) {
-			const metadata = getBinaryData(itemIndex, propertyName) as { data?: string; dataId?: string; mimeType?: string };
-			if (typeof metadata.data !== 'string') throw new Error('Squared does not have a binary-data store configured for this n8n item');
-			return Buffer.from(metadata.data, 'base64');
+			return getBinaryBuffer(itemIndex, propertyName);
 		},
-		async prepareBinaryData(value: Buffer | Uint8Array | ArrayBuffer | string, fileName?: string, mimeType?: string) {
+		async getBinaryDataStream(itemIndex: number, propertyName: string) {
+			const { Readable } = await import('node:stream');
+			return Readable.from(await getBinaryBuffer(itemIndex, propertyName));
+		},
+		async prepareBinaryData(value: Buffer | Uint8Array | ArrayBuffer | string, fileName?: string, mimeType?: string, properties: Record<string, unknown> = {}) {
 			const buffer = typeof value === 'string' ? Buffer.from(value) : Buffer.from(value instanceof ArrayBuffer ? new Uint8Array(value) : value);
 			const resolvedMimeType = mimeType || 'application/octet-stream';
 			const resolvedFileExtension = extname(fileName ?? '').replace(/^\./, '') || extensionForMimeType(resolvedMimeType);
 			const resolvedFileName = fileName || (resolvedFileExtension ? `file.${resolvedFileExtension}` : 'file');
+			const dataReference = buffer.byteLength > 1_048_576 && binaryStore ? { dataId: await binaryStore.store(buffer) } : { data: buffer.toString('base64') };
 			return {
-				data: buffer.toString('base64'),
+				...properties,
+				...dataReference,
 				fileName: resolvedFileName,
 				fileExtension: resolvedFileExtension,
 				fileSize: `${buffer.byteLength} B`,
@@ -538,7 +807,9 @@ async function executeHttpRequest(options: Record<string, unknown>): Promise<unk
 	let body: BodyInit | undefined;
 	const method = typeof options.method === 'string' ? options.method.toUpperCase() : 'GET';
 	if (options.form && typeof options.form === 'object') {
-		body = new URLSearchParams(Object.entries(options.form as Record<string, unknown>).map(([key, value]) => [key, String(value)]));
+		body = options.form instanceof URLSearchParams
+			? options.form
+			: new URLSearchParams(Object.entries(options.form as Record<string, unknown>).map(([key, value]) => [key, String(value)]));
 		if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded');
 	} else if (options.formData && typeof options.formData === 'object') {
 		const formData = new FormData();
@@ -548,27 +819,32 @@ async function executeHttpRequest(options: Record<string, unknown>): Promise<unk
 		}
 		body = formData;
 	} else if (options.body !== undefined && options.body !== null && !['GET', 'HEAD'].includes(method)) {
-		if (typeof options.body === 'string' || options.body instanceof Blob || options.body instanceof FormData) {
+		if (typeof options.body === 'string' || options.body instanceof Blob || options.body instanceof FormData || options.body instanceof URLSearchParams) {
 			body = options.body;
 		} else if (options.body instanceof Uint8Array) {
 			body = new Blob([Uint8Array.from(options.body)]);
+		} else if (options.json === false && typeof options.body === 'object') {
+			body = new URLSearchParams(Object.entries(options.body as Record<string, unknown>).map(([key, value]) => [key, String(value)]));
+			if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded');
 		} else {
 			body = JSON.stringify(options.body);
-			if (!headers.has('content-type')) headers.set('content-type', options.json === false ? 'application/x-www-form-urlencoded' : 'application/json');
+			if (!headers.has('content-type')) headers.set('content-type', 'application/json');
 		}
 	}
-	const timeout = Number(options.timeout);
+	const timeoutOption = isObject(options.timeout) ? options.timeout.request : options.timeout;
+	const timeout = Number(timeoutOption);
 	const signal = Number.isFinite(timeout) && timeout > 0 ? AbortSignal.timeout(timeout) : undefined;
 	const response = await fetch(url, { method, headers, body, signal, redirect: options.followRedirect === false ? 'manual' : 'follow' });
 	const bytes = Buffer.from(await response.arrayBuffer());
 	const contentType = response.headers.get('content-type') ?? '';
-	let responseBody: unknown = bytes.toString(typeof options.encoding === 'string' ? options.encoding as BufferEncoding : 'utf8');
-	if (options.encoding === null) responseBody = bytes;
+	const textEncoding = typeof options.encoding === 'string' && options.encoding !== 'text' ? options.encoding as BufferEncoding : 'utf8';
+	let responseBody: unknown = bytes.toString(textEncoding);
+	if (options.encoding === null || options.responseType === 'arraybuffer' || options.responseType === 'buffer') responseBody = bytes;
 	else if (options.json === true || /(?:application|text)\/(?:[^;]+\+)?json\b/i.test(contentType)) {
 		const text = bytes.toString('utf8');
 		responseBody = text ? JSON.parse(text) : null;
 	}
-	if (!response.ok && options.simple !== false) {
+	if (!response.ok && options.simple !== false && options.ignoreHttpStatusErrors !== true) {
 		const error = new Error(`Request failed with status code ${response.status}`) as Error & { statusCode: number; response: unknown };
 		error.statusCode = response.status;
 		error.response = { statusCode: response.status, statusMessage: response.statusText, headers: responseHeaders(response.headers), body: responseBody };
@@ -583,6 +859,164 @@ async function executeHttpRequest(options: Record<string, unknown>): Promise<unk
 function responseHeaders(headers: Headers): Record<string, string> {
 	const result: Record<string, string> = {};
 	headers.forEach((value, key) => { result[key] = value; });
+	return result;
+}
+
+async function getFreshOAuth2AccessToken(
+	credentialType: string,
+	credentials: Record<string, unknown>,
+	oauthOptions: Record<string, unknown>,
+	updateCredentials: (credentialType: string, credentials: Record<string, unknown>) => Promise<void>,
+): Promise<string> {
+	const existing = isObject(credentials.oauthTokenData) ? credentials.oauthTokenData : {};
+	const expiryText = existing.n8n_expires_at ?? credentials.expiresAt;
+	const expiry = typeof expiryText === 'string' ? Date.parse(expiryText) : Number(expiryText);
+	const hasKnownExpiry = Number.isFinite(expiry) && expiry > 0;
+	const needsRefresh = oauthOptions.forceRefresh === true || (hasKnownExpiry && expiry <= Date.now() + 30_000);
+	if (needsRefresh) {
+		const refreshToken = typeof existing.refresh_token === 'string' ? existing.refresh_token : undefined;
+		if (!refreshToken) throw new Error(`OAuth2 credential ${credentialType} expired without a refresh token`);
+		const tokenUrl = credentials.accessTokenUrl ?? credentials.accessTokenUri ?? credentials.tokenUrl;
+		if (typeof tokenUrl !== 'string' || !tokenUrl) throw new Error(`OAuth2 credential ${credentialType} has no access token URL for refresh`);
+		const clientId = credentials.clientId ?? credentials.client_id;
+		const clientSecret = credentials.clientSecret ?? credentials.client_secret;
+		const authentication = oauthOptions.authentication ?? credentials.authentication ?? 'header';
+		const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken });
+		if (typeof existing.resource === 'string' && existing.resource) body.set('resource', existing.resource);
+		const headers: Record<string, string> = { accept: 'application/json' };
+		if (authentication === 'body') {
+			if (typeof clientId === 'string') body.set('client_id', clientId);
+			if (typeof clientSecret === 'string') body.set('client_secret', clientSecret);
+		} else if (typeof clientId === 'string' && typeof clientSecret === 'string') {
+			headers.authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+		} else if (typeof clientId === 'string') {
+			body.set('client_id', clientId);
+		}
+		const refreshed = await executeHttpRequest({ method: 'POST', url: tokenUrl, headers, body, json: true, timeout: 300_000 }) as Record<string, unknown>;
+		if (!isObject(refreshed) || typeof refreshed.access_token !== 'string' || !refreshed.access_token) {
+			throw new Error(`OAuth2 credential ${credentialType} refresh response did not include an access token`);
+		}
+		const nextTokenData: Record<string, unknown> = {
+			...existing,
+			...refreshed,
+			refresh_token: typeof refreshed.refresh_token === 'string' && refreshed.refresh_token ? refreshed.refresh_token : refreshToken,
+		};
+		if (Number.isFinite(Number(refreshed.expires_in))) {
+			nextTokenData.n8n_expires_at = new Date(Date.now() + Number(refreshed.expires_in) * 1_000).toISOString();
+		}
+		credentials.oauthTokenData = nextTokenData;
+		await updateCredentials(credentialType, credentials);
+	}
+	const token = findOAuthAccessToken(credentials);
+	if (!token) throw new Error(`Credential ${credentialType} has no OAuth2 access token`);
+	return token;
+}
+
+function signOAuth1Request(options: Record<string, unknown>, credentials: Record<string, unknown>): Record<string, unknown> {
+	const address = options.uri ?? options.url;
+	if (typeof address !== 'string' || !address) throw new Error('OAuth1 request needs a non-empty uri or url');
+	const url = new URL(address);
+	const tokenData = isObject(credentials.oauthTokenData) ? credentials.oauthTokenData : {};
+	const consumerKey = credentials.consumerKey ?? credentials.consumer_key ?? credentials.clientId;
+	const consumerSecret = credentials.consumerSecret ?? credentials.consumer_secret ?? credentials.clientSecret;
+	const token = tokenData.oauth_token ?? credentials.accessToken ?? credentials.token;
+	const tokenSecret = tokenData.oauth_token_secret ?? credentials.tokenSecret ?? credentials.oauthTokenSecret;
+	if (![consumerKey, consumerSecret, token, tokenSecret].every((value) => typeof value === 'string' && value.length > 0)) {
+		throw new Error('OAuth1 credential requires consumer key/secret and access token/secret');
+	}
+	const method = typeof options.method === 'string' ? options.method.toUpperCase() : 'GET';
+	const oauth: Record<string, string> = {
+		oauth_consumer_key: String(consumerKey),
+		oauth_nonce: randomBytes(16).toString('hex'),
+		oauth_signature_method: 'HMAC-SHA1',
+		oauth_timestamp: String(Math.floor(Date.now() / 1_000)),
+		oauth_token: String(token),
+		oauth_version: '1.0',
+	};
+	const parameters: Array<[string, string]> = [];
+	url.searchParams.forEach((value, key) => parameters.push([key, value]));
+	for (const [key, value] of Object.entries((options.qs ?? options.query) as Record<string, unknown> ?? {})) {
+		for (const entry of Array.isArray(value) ? value : [value]) if (entry !== undefined && entry !== null) parameters.push([key, String(entry)]);
+	}
+	if (options.form && typeof options.form === 'object') {
+		for (const [key, value] of Object.entries(options.form as Record<string, unknown>)) parameters.push([key, String(value)]);
+	} else if (typeof options.body === 'object' && options.body !== null && options.json === false) {
+		for (const [key, value] of Object.entries(options.body as Record<string, unknown>)) parameters.push([key, String(value)]);
+	}
+	parameters.push(...Object.entries(oauth));
+	const normalized = parameters.map(([key, value]) => [oauthEncode(key), oauthEncode(value)] as const)
+		.sort(([keyA, valueA], [keyB, valueB]) => keyA.localeCompare(keyB) || valueA.localeCompare(valueB))
+		.map(([key, value]) => `${key}=${value}`).join('&');
+	const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+	const baseString = [method, oauthEncode(baseUrl), oauthEncode(normalized)].join('&');
+	oauth.oauth_signature = createHmac('sha1', `${oauthEncode(String(consumerSecret))}&${oauthEncode(String(tokenSecret))}`).update(baseString).digest('base64');
+	const header = Object.entries(oauth).sort(([left], [right]) => left.localeCompare(right))
+		.map(([key, value]) => `${oauthEncode(key)}="${oauthEncode(value)}"`).join(', ');
+	return { ...options, headers: { ...(isObject(options.headers) ? options.headers : {}), authorization: `OAuth ${header}` } };
+}
+
+function oauthEncode(value: string): string {
+	return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+async function requestPages(
+	requestOptions: Record<string, unknown>,
+	itemIndex: number,
+	paginationOptions: Record<string, unknown>,
+	credentialType: string | undefined,
+	getInputs: () => NodeExecutionData[],
+	getCredentials: (credentialType: string) => Promise<Record<string, unknown>>,
+): Promise<unknown[]> {
+	const pages: unknown[] = [];
+	const inputs = getInputs();
+	const item = inputs[itemIndex] ?? { json: {} };
+	const additional: Record<string, unknown> = { $request: requestOptions, $response: {}, $pageCount: 0 };
+	const maxRequestsValue = paginationOptions.maxRequests === undefined ? 100 : Number(paginationOptions.maxRequests);
+	const maxRequests = Number.isFinite(maxRequestsValue) && maxRequestsValue > 0 ? Math.min(Math.floor(maxRequestsValue), 10_000) : 100;
+	let priorBodyHash = '';
+	let repeatedBodyCount = 0;
+	for (let page = 0; page < maxRequests; page++) {
+		const resolvedPage = resolveParameterTree(paginationOptions.request ?? {}, { item, inputItems: inputs, additional }) as Record<string, unknown>;
+		const pageOptions = mergePaginationOptions(requestOptions, resolvedPage);
+		const address = pageOptions.uri ?? pageOptions.url;
+		if (typeof address !== 'string' || !address) throw new Error('Pagination request has no valid URL');
+		const prepared = { ...pageOptions, resolveWithFullResponse: true, simple: false };
+			let authenticated: Record<string, unknown> = prepared;
+		if (credentialType) authenticated = applyGenericHttpAuthentication(prepared, await getCredentials(credentialType));
+		const response = await executeHttpRequest(authenticated) as { statusCode: number; statusMessage?: string; headers: Record<string, string>; body: unknown };
+		pages.push(response);
+		additional.$response = response;
+		additional.$pageCount = page + 1;
+		const bodyHash = JSON.stringify(response.body ?? null);
+		if (bodyHash === priorBodyHash) repeatedBodyCount += 1;
+		else repeatedBodyCount = 0;
+		priorBodyHash = bodyHash;
+		if (repeatedBodyCount >= 4) throw new Error('Pagination returned the same response repeatedly; check the pagination completion rule');
+		const shouldContinue = resolveParameterTree(paginationOptions.continue ?? false, { item, inputItems: inputs, additional });
+		if (shouldContinue !== true) return pages;
+		if (response.statusCode < 200 || response.statusCode >= 300) {
+			const error = new Error(`Request failed with status code ${response.statusCode}`) as Error & { statusCode: number; response: unknown };
+			error.statusCode = response.statusCode;
+			error.response = response;
+			throw error;
+		}
+		const interval = Number(resolveParameterTree(paginationOptions.requestInterval ?? 0, { item, inputItems: inputs, additional }));
+		if (Number.isFinite(interval) && interval > 0) await delay(Math.min(interval, 120_000), new AbortController().signal);
+	}
+	return pages;
+}
+
+function mergePaginationOptions(base: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
+	const result: Record<string, unknown> = { ...base, ...next };
+	if (isObject(base.headers) || isObject(next.headers)) result.headers = { ...(isObject(base.headers) ? base.headers : {}), ...(isObject(next.headers) ? next.headers : {}) };
+	if (isObject(base.qs) || isObject(next.qs)) result.qs = { ...(isObject(base.qs) ? base.qs : {}), ...(isObject(next.qs) ? next.qs : {}) };
+	if (isObject(base.query) || isObject(next.query)) result.query = { ...(isObject(base.query) ? base.query : {}), ...(isObject(next.query) ? next.query : {}) };
+	if ('formData' in base && next.body !== undefined) { result.formData = next.body; delete result.body; }
+	else if ('form' in base && next.body !== undefined) { result.form = next.body; delete result.body; }
+	if (typeof next.url === 'string' && isObject(result.qs)) {
+		const nextUrl = new URL(next.url);
+		for (const key of nextUrl.searchParams.keys()) delete result.qs[key];
+	}
 	return result;
 }
 
@@ -640,6 +1074,9 @@ function reachableNodeNames(graph: WorkflowGraph, startName: string): Set<string
 		if (!current || reachable.has(current)) continue;
 		reachable.add(current);
 		for (const connection of graph.outgoing.get(current) ?? []) stack.push(connection.target.name);
+		for (const connection of graph.incoming.get(current) ?? []) {
+			if (connection.targetType !== 'main' || connection.sourceType !== 'main') stack.push(connection.source.name);
+		}
 	}
 	return reachable;
 }
@@ -673,38 +1110,70 @@ function topologicalOrder(graph: WorkflowGraph, reachable: Set<string>): Workflo
 
 function collectInputPorts(
 	connections: WorkflowConnection[],
-	outputsByNode: Map<string, Record<string, NodeExecutionData[][]>>,
+	outputsByNode: Map<string, Record<string, unknown[][]>>,
 ): NodeExecutionData[][] {
-	const maximumInput = Math.max(0, ...connections.map((connection) => connection.targetInput));
+	const mainConnections = connections.filter((connection) => connection.targetType === 'main' && connection.sourceType === 'main');
+	const maximumInput = Math.max(0, ...mainConnections.map((connection) => connection.targetInput));
 	const ports = Array.from({ length: maximumInput + 1 }, () => [] as NodeExecutionData[]);
-	for (const connection of connections) {
+	for (const connection of mainConnections) {
 		const sourceOutputs = outputsByNode.get(connection.source.name)?.[connection.sourceType] ?? [];
 		const data = sourceOutputs[connection.sourceOutput] ?? [];
-		ports[connection.targetInput]?.push(...data);
+		ports[connection.targetInput]?.push(...data.filter(isNodeExecutionData));
 	}
 	return ports;
 }
 
 function getOutputPortCount(graph: WorkflowGraph, nodeName: string): number {
-	const outputs = (graph.outgoing.get(nodeName) ?? []).map((connection) => connection.sourceOutput);
+	const outputs = (graph.outgoing.get(nodeName) ?? []).filter((connection) => connection.sourceType === 'main').map((connection) => connection.sourceOutput);
 	return outputs.length ? Math.max(...outputs) + 1 : 1;
 }
 
-function normalizeOutput(output: NodeOutput, minimumPorts: number): Record<string, NodeExecutionData[][]> {
+function normalizeOutput(output: NodeOutput, minimumPorts: number, inputPorts: NodeExecutionData[][] = []): Record<string, unknown[][]> {
 	if (output === null || output === undefined) return { main: Array.from({ length: minimumPorts }, () => []) };
 	const channels = Array.isArray(output) ? { main: output } : output;
-	const normalized: Record<string, NodeExecutionData[][]> = Object.create(null);
+	const normalized: Record<string, unknown[][]> = Object.create(null);
 	for (const [type, ports] of Object.entries(channels)) {
 		if (!Array.isArray(ports)) throw new Error(`Node output ${type} must be an array of output ports`);
-		normalized[type] = ports.map((port) => {
+		if (type !== 'main') {
+			normalized[type] = ports.map((port) => {
+				if (!Array.isArray(port)) throw new Error(`Node output ${type} contains an invalid port`);
+				return [...port];
+			});
+			continue;
+		}
+			normalized[type] = ports.map((port) => {
 			if (!Array.isArray(port)) throw new Error(`Node output ${type} contains an invalid port`);
-			return port.map(normalizeItem);
+			return port.map((item, outputIndex) => normalizePairedItem(normalizeItem(item), outputIndex, inputPorts));
 		});
 	}
 	const main = normalized.main ?? [];
 	while (main.length < minimumPorts) main.push([]);
 	normalized.main = main;
 	return normalized;
+}
+
+function normalizePairedItem(
+	item: NodeExecutionData,
+	outputIndex: number,
+	inputPorts: NodeExecutionData[][],
+): NodeExecutionData {
+	if (item.pairedItem !== undefined) return item;
+	for (let inputIndex = 0; inputIndex < inputPorts.length; inputIndex++) {
+		const linkedItem = inputPorts[inputIndex]?.findIndex((candidate) => candidate === item) ?? -1;
+		if (linkedItem >= 0) return { ...item, pairedItem: { item: linkedItem, input: inputIndex } };
+	}
+	if (inputPorts.length === 1 && outputIndex < (inputPorts[0]?.length ?? 0)) {
+		return { ...item, pairedItem: { item: outputIndex, input: 0 } };
+	}
+	return item;
+}
+
+function snapshotContextData(contextData: Map<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
+	return Object.fromEntries([...contextData].map(([key, value]) => [key, structuredClone(value)]));
+}
+
+function snapshotExecutionMetadata(metadata: Map<string, unknown>): Record<string, unknown> {
+	return Object.fromEntries([...metadata].map(([key, value]) => [key, structuredClone(value)]));
 }
 
 function normalizeInput(input: unknown): NodeExecutionData[] {
@@ -720,8 +1189,16 @@ function normalizeItem(item: unknown): NodeExecutionData {
 	return { json: { value: item } };
 }
 
-function assertItemLimit(items: NodeExecutionData[], limit: number): void {
+function assertItemLimit(items: readonly unknown[], limit: number): void {
 	if (items.length > limit) throw new Error(`Execution item count exceeds the configured limit of ${limit}`);
+}
+
+function nodeExecutionPorts(ports: unknown[][]): NodeExecutionData[][] {
+	return ports.map((port) => port.filter(isNodeExecutionData));
+}
+
+function isNodeExecutionData(value: unknown): value is NodeExecutionData {
+	return isObject(value) && isObject(value.json);
 }
 
 function makeRunRecord(
@@ -771,6 +1248,28 @@ function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
 		};
 		signal.addEventListener('abort', onAbort, { once: true });
 	});
+}
+
+function createCapturedWebhookResponse(): Record<string, unknown> {
+	const response: Record<string, unknown> = {
+		statusCode: 200,
+		headers: {} as Record<string, string>,
+		body: undefined,
+		ended: false,
+		writeHead(statusCode: number, statusMessageOrHeaders?: string | Record<string, string>, headers?: Record<string, string>) {
+			response.statusCode = statusCode;
+			const selectedHeaders = typeof statusMessageOrHeaders === 'object' ? statusMessageOrHeaders : headers;
+			if (selectedHeaders) Object.assign(response.headers as Record<string, string>, selectedHeaders);
+			return response;
+		},
+		setHeader(name: string, value: string) { (response.headers as Record<string, string>)[name.toLowerCase()] = value; return response; },
+		getHeader(name: string) { return (response.headers as Record<string, string>)[name.toLowerCase()]; },
+		removeHeader(name: string) { delete (response.headers as Record<string, string>)[name.toLowerCase()]; },
+		write(chunk: unknown) { response.body = `${String(response.body ?? '')}${String(chunk ?? '')}`; return true; },
+		end(body?: unknown) { if (body !== undefined) response.body = body; response.ended = true; return response; },
+		flushHeaders() { response.headersSent = true; },
+	};
+	return response;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

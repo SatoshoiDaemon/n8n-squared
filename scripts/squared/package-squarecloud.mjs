@@ -15,7 +15,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
@@ -50,7 +50,7 @@ const runtimePackage = {
 };
 const displayName = process.env.SQUARED_DISPLAY_NAME || 'Squared';
 if (/[\r\n=]/.test(displayName)) throw new Error('Invalid SQUARED_DISPLAY_NAME');
-const memory = process.env.SQUARED_MEMORY_MB || '1024';
+const memory = process.env.SQUARED_MEMORY_MB || '3072';
 if (!/^\d+$/.test(memory) || Number(memory) < 512) {
 	throw new Error('SQUARED_MEMORY_MB must be an integer of at least 512');
 }
@@ -81,6 +81,32 @@ writeFileSync(
 	].join('\n'),
 );
 
+const n8nPackagesDirectory = resolve(process.env.SQUARED_N8N_PACKAGES_DIR || join(root, 'squared-data', 'n8n-nodes', 'node_modules'));
+const n8nInstallPrefix = dirname(n8nPackagesDirectory);
+const n8nRuntimeLockPath = join(n8nInstallPrefix, 'package-lock.json');
+if (!existsSync(n8nRuntimeLockPath)) throw new Error('Missing n8n runtime package-lock.json; run npm run n8n:install first');
+const n8nRuntimeLock = JSON.parse(readFileSync(n8nRuntimeLockPath, 'utf8'));
+const n8nPackageVersions = {
+	'n8n-nodes-base': '2.42.5',
+	'@n8n/n8n-nodes-langchain': '2.42.5',
+	'n8n-core': '2.42.5',
+	'@n8n/backend-common': '1.42.5',
+	'n8n-workflow': '2.42.4',
+};
+for (const [name, version] of Object.entries(n8nPackageVersions)) {
+	const packageManifestPath = join(n8nPackagesDirectory, ...name.split('/'), 'package.json');
+	if (!existsSync(packageManifestPath)) throw new Error(`Missing installed n8n runtime package ${name}; run npm run n8n:install first`);
+	const installed = JSON.parse(readFileSync(packageManifestPath, 'utf8'));
+	if (installed.version !== version) throw new Error(`Expected ${name}@${version}, found ${installed.version || 'unknown'}`);
+	if (n8nRuntimeLock.packages?.[`node_modules/${name}`]?.version !== version) {
+		throw new Error(`n8n runtime package-lock.json does not pin ${name}@${version}`);
+	}
+}
+const n8nRuntimeLockCopy = 'vendor/n8n-package-lock.json';
+mkdirSync(join(app, 'vendor'), { recursive: true });
+copyFileSync(n8nRuntimeLockPath, join(app, n8nRuntimeLockCopy));
+const n8nRuntimeLockSha256 = createHash('sha256').update(readFileSync(n8nRuntimeLockPath)).digest('hex');
+
 // The deploy ZIP is a conventional Node app. It has no workspace install or build step.
 run('npm', ['ci', '--omit=dev', '--ignore-scripts'], app);
 const archiveEntries = normalizeArchiveMetadata(app);
@@ -106,7 +132,16 @@ const manifest = {
 	startCommand: 'npm start',
 	buildRequired: false,
 	workspacePackages: 0,
+	memoryMb: Number(memory),
 	dependencies: product.dependencies,
+	n8nRuntime: {
+		packages: n8nPackageVersions,
+		installMode: 'npm ci on first start into persistent application storage',
+		persistentDirectory: 'n8n-nodes/node_modules',
+		lockfile: n8nRuntimeLockCopy,
+		lockfileSha256: n8nRuntimeLockSha256,
+		publishedPackageLicenses: 'retained in the installed official npm packages',
+	},
 	historicalSource: 'n8n source snapshot; see UPSTREAM.md',
 };
 writeFileSync(join(output, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

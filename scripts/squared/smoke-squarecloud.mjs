@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
@@ -8,15 +8,47 @@ import { pathToFileURL } from 'node:url';
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
 const archive = join(output, 'squared-squarecloud.zip');
+const startupTimeoutMs = 30 * 60 * 1000;
+const packageMetadata = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
+const expectedN8nPackages = packageMetadata.n8nRuntime?.packages;
+if (
+	!expectedN8nPackages ||
+	packageMetadata.n8nRuntime.installMode !== 'npm ci on first start into persistent application storage' ||
+	packageMetadata.n8nRuntime.lockfile !== 'vendor/n8n-package-lock.json'
+) {
+	throw new Error('Square Cloud package does not declare persistent npm installation for the official n8n packages');
+}
 const temporaryRoot = join(root, '.tmp');
 mkdirSync(temporaryRoot, { recursive: true });
 const temporary = mkdtempSync(join(temporaryRoot, 'squared-smoke-'));
 const app = join(temporary, 'app');
 mkdirSync(app, { recursive: true });
-const dataDir = join(temporary, 'persistent-data');
+const persistentDataOverride = process.env.SQUARED_SMOKE_PERSISTENT_DATA_DIR;
+const dataDir = persistentDataOverride ? resolve(persistentDataOverride) : join(temporary, 'persistent-data');
+if (persistentDataOverride && !dataDir.startsWith(`${resolve(temporaryRoot)}\\`)) {
+	throw new Error('SQUARED_SMOKE_PERSISTENT_DATA_DIR must be inside the workspace .tmp directory');
+}
 const password = randomBytes(24).toString('base64url');
 const email = `smoke-${randomUUID()}@example.test`;
 let backend;
+let smokeSucceeded = false;
+const startupMessages = [];
+
+function captureStartupOutput(stream) {
+	let pending = '';
+	stream.setEncoding('utf8');
+	stream.on('data', (chunk) => {
+		pending += chunk;
+		const lines = pending.split(/\r?\n/);
+		pending = lines.pop() ?? '';
+		for (const line of lines) {
+			if (/^(?:Official n8n runtime packages|Loaded n8n package manifests|Squared \d|Squared failed to start|HTTP server failed)/.test(line)) {
+				startupMessages.push(line);
+				if (startupMessages.length > 20) startupMessages.shift();
+			}
+		}
+	});
+}
 
 function run(command, args, cwd = root) {
 	const result = spawnSync(command, args, { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
@@ -40,14 +72,23 @@ async function freePort() {
 async function startBackend(port) {
 	backend = spawn(process.execPath, ['src/main.js'], {
 		cwd: app,
-		env: { ...process.env, PORT: String(port), SQUARED_HOST: '127.0.0.1', SQUARED_DATA_DIR: dataDir },
+		env: {
+			...process.env,
+			PORT: String(port),
+			SQUARED_HOST: '127.0.0.1',
+			SQUARED_DATA_DIR: dataDir,
+			SQUARED_N8N_PACKAGES_DIR: join(dataDir, 'n8n-nodes', 'node_modules'),
+		},
 		stdio: 'pipe',
 	});
+	captureStartupOutput(backend.stdout);
+	captureStartupOutput(backend.stderr);
 	return `http://127.0.0.1:${port}`;
 }
 
 async function waitForReady(base, label) {
-	for (let attempt = 0; attempt < 60; attempt++) {
+	const deadline = Date.now() + startupTimeoutMs;
+	while (Date.now() < deadline) {
 		if (backend.exitCode !== null) throw new Error(`Packed runtime exited during ${label} (exit ${backend.exitCode})`);
 		try {
 			const response = await fetch(`${base}/healthz/readiness`);
@@ -55,9 +96,10 @@ async function waitForReady(base, label) {
 		} catch {
 			// SQLite setup or the HTTP listener is still starting.
 		}
-		await new Promise((done) => setTimeout(done, 250));
+		await new Promise((done) => setTimeout(done, 500));
 	}
-	throw new Error(`Packed runtime did not become ready during ${label}`);
+	const diagnostics = startupMessages.length ? `; startup logs: ${startupMessages.slice(-10).join(' | ')}` : '';
+	throw new Error(`Packed runtime did not become ready during ${label} within ${startupTimeoutMs / 60_000} minutes${diagnostics}`);
 }
 
 async function stopBackend() {
@@ -104,11 +146,20 @@ const base = await startBackend(port);
 
 try {
 	await waitForReady(base, 'first start');
+	assertInstalledN8nPackages('first start');
+	const persistentLockfile = readFileSync(join(dataDir, 'n8n-nodes', 'package-lock.json'));
+	if (createHash('sha256').update(persistentLockfile).digest('hex') !== packageMetadata.n8nRuntime.lockfileSha256) {
+		throw new Error('The published n8n runtime lockfile did not persist with the official packages');
+	}
+	if (!startupMessages.some((line) => line.startsWith('Official n8n runtime packages installed'))) {
+		throw new Error('The first start did not install pinned n8n packages into persistent storage');
+	}
+	if (existsSync(join(app, 'vendor', 'n8n-runtime.tar.br'))) throw new Error('The ZIP unexpectedly bundles an n8n runtime seed');
 	const editor = await fetch(base);
 	if (!editor.ok || !(await editor.text()).includes('<title>Squared</title>')) throw new Error('Editor was not served by the packed runtime');
 	const setupState = await api(base, null, '/api/auth/status').then((response) => response.json());
 	if (!setupState.setupRequired || setupState.authenticated) throw new Error('First-boot state was not reported by the packed runtime');
-	if ((await api(base, null, '/api/workflows')).status !== 401) throw new Error('Workflow API accepted a request without authentication');
+	await assertUnauthorized(base, 'Workflow API accepted a request without authentication');
 
 	const bootstrapCode = readFileSync(join(dataDir, 'bootstrap-code'), 'utf8');
 	const bootstrap = await api(base, null, '/api/auth/bootstrap', {
@@ -147,6 +198,33 @@ try {
 	const manualExecution = await waitForExecution(base, cookie, manualExecutionId);
 	if (manualExecution.status !== 'succeeded' || manualExecution.output?.message !== 'sqlite-smoke' || manualExecution.output?.source !== 'local-smoke') {
 		throw new Error('Manual workflow did not return the expected output');
+	}
+
+	const n8nWorkflowResponse = await api(base, cookie, '/api/workflows/import', {
+		method: 'POST',
+		body: JSON.stringify({
+			name: `squared-e2e-n8n-node-${randomUUID()}`,
+			nodes: [
+				{ id: randomUUID(), name: 'Manual Trigger', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+				{ id: randomUUID(), name: 'Set', type: 'n8n-nodes-base.set', typeVersion: 3.5, position: [260, 0], parameters: { mode: 'manual', assignments: { assignments: [{ id: randomUUID(), name: 'compatibility', value: '={{$json.value}}', type: 'string' }] }, includeOtherFields: true, options: {} } },
+				{ id: randomUUID(), name: 'Code', type: 'n8n-nodes-base.code', typeVersion: 2, position: [520, 0], parameters: { mode: 'runOnceForAllItems', language: 'javaScript', jsCode: 'return $input.all().map(item => ({ json: { ...item.json, codeExecuted: true } }));' } },
+			],
+			connections: {
+				'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+				Set: { main: [[{ node: 'Code', type: 'main', index: 0 }]] },
+			},
+		}),
+	});
+	if (n8nWorkflowResponse.status !== 201) throw new Error('The packed runtime could not import a workflow containing published n8n nodes');
+	const n8nWorkflow = await n8nWorkflowResponse.json();
+	const n8nRun = await api(base, cookie, `/api/workflows/${n8nWorkflow.id}/run`, {
+		method: 'POST', body: JSON.stringify({ input: { value: 'official-node-smoke' } }),
+	});
+	if (n8nRun.status !== 202) throw new Error('The packed runtime could not queue a workflow containing a published n8n node');
+	const n8nExecutionId = (await n8nRun.json()).id;
+	const n8nExecution = await waitForExecution(base, cookie, n8nExecutionId);
+	if (n8nExecution.status !== 'succeeded' || n8nExecution.output?.output?.[0]?.json?.compatibility !== 'official-node-smoke' || n8nExecution.output?.output?.[0]?.json?.codeExecuted !== true) {
+		throw new Error('Published n8n Set and Code nodes did not execute from the deploy package seed');
 	}
 
 	const webhookResponse = await api(base, cookie, '/api/workflows', {
@@ -194,6 +272,10 @@ try {
 
 	const restartBase = await startBackend(port);
 	await waitForReady(restartBase, 'restart');
+	assertInstalledN8nPackages('restart');
+	if (!startupMessages.some((line) => line.startsWith('Official n8n runtime packages available'))) {
+		throw new Error('The restart did not reuse the pinned n8n package installation');
+	}
 	const keyAfterRestart = readFileSync(join(dataDir, 'encryption-key'));
 	if (!encryptionKeyBeforeRestart.equals(keyAfterRestart)) throw new Error('Encryption key changed after restart');
 	const authenticatedAfterRestart = await api(restartBase, cookie, '/api/auth/status').then((response) => response.json());
@@ -202,14 +284,40 @@ try {
 	if (persistedWorkflow.name !== webhookWorkflow.name) throw new Error('Workflow did not survive restart');
 	const persistedExecution = await api(restartBase, cookie, `/api/executions/${webhookExecutionId}`).then((response) => response.json());
 	if (persistedExecution.status !== 'succeeded') throw new Error('Execution history did not survive restart');
+	const persistedN8nWorkflow = await api(restartBase, cookie, `/api/workflows/${n8nWorkflow.id}`).then((response) => response.json());
+	if (persistedN8nWorkflow.name !== n8nWorkflow.name) throw new Error('The imported n8n workflow did not survive restart');
+	const persistedN8nExecution = await api(restartBase, cookie, `/api/executions/${n8nExecutionId}`).then((response) => response.json());
+	if (persistedN8nExecution.status !== 'succeeded') throw new Error('The published n8n node execution history did not survive restart');
 	const logout = await api(restartBase, cookie, '/api/auth/logout', { method: 'POST' });
 	if (logout.status !== 204) throw new Error('Admin logout failed after restart');
-	if ((await api(restartBase, null, '/api/workflows')).status !== 401) throw new Error('Logged-out API accepted a request');
+	await assertUnauthorized(restartBase, 'Logged-out API accepted a request');
 
-	console.log('Squared ZIP smoke passed: packed runtime startup, protected first-admin setup, session login/logout, SQLite workflow and execution persistence across restart, credential encryption/key reuse, manual execution and webhook.');
+	console.log('Squared ZIP smoke passed: pinned n8n npm installation into persistent storage, official package license retention and reuse after restart, published n8n Set and Code execution, protected first-admin setup, session login/logout, SQLite workflow and execution persistence, credential encryption/key reuse, manual execution and webhook.');
+	smokeSucceeded = true;
 } finally {
 	await stopBackend();
 	rmSync(temporary, { recursive: true, force: true });
+	if (smokeSucceeded && persistentDataOverride) rmSync(dataDir, { recursive: true, force: true });
+}
+
+function assertInstalledN8nPackages(phase) {
+	const packagesDirectory = join(dataDir, 'n8n-nodes', 'node_modules');
+	for (const [name, version] of Object.entries(expectedN8nPackages)) {
+		const manifest = JSON.parse(readFileSync(join(packagesDirectory, ...name.split('/'), 'package.json'), 'utf8'));
+		if (manifest.version !== version) throw new Error(`The published ${name}@${version} package is missing or changed after ${phase}`);
+	}
+	for (const packageName of ['n8n-nodes-base', '@n8n/n8n-nodes-langchain']) {
+		const packageDirectory = join(packagesDirectory, ...packageName.split('/'));
+		const hasLicense = ['LICENSE', 'LICENSE.md', 'LICENSE.txt'].some((name) => existsSync(join(packageDirectory, name)));
+		if (!hasLicense) throw new Error(`The published ${packageName} license file is missing after ${phase}`);
+	}
+}
+
+async function assertUnauthorized(baseUrl, errorMessage) {
+	const response = await api(baseUrl, null, '/api/workflows');
+	const unauthorized = response.status === 401;
+	await response.body?.cancel();
+	if (!unauthorized) throw new Error(errorMessage);
 }
 
 async function waitForExecution(baseUrl, sessionCookie, executionId) {

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -22,6 +22,7 @@ let snapshot;
 let commitMayHaveApplied = false;
 let rollbackResult = 'not needed';
 let appUrl;
+let previousVersionWasResponsive = false;
 
 try {
 	verifySquareCloudPackage();
@@ -44,9 +45,14 @@ try {
 		throw new Error(`Production runtime environment is incomplete or incompatible: ${environment.requirements.join(', ')}`);
 	}
 
-	console.log('Pre-deploy checks passed: target, runtime variables, HTTP binding, app status, and package.');
-	snapshot = await createPreDeploySnapshot(client, appId);
-	console.log(`Pre-deploy Square Cloud snapshot ready: ${snapshot.name}`);
+	previousVersionWasResponsive = await existingVersionResponds(inspection.appUrl, inspection.appStatus);
+	console.log('Pre-deploy checks passed: target, optional runtime settings, HTTP binding, app status, and package.');
+	if (previousVersionWasResponsive) {
+		snapshot = await createPreDeploySnapshot(client, appId);
+		console.log(`Pre-deploy Square Cloud snapshot ready: ${snapshot.name}`);
+	} else {
+		console.log('No responsive previous application version; this first deploy does not require a recovery snapshot.');
+	}
 
 	const form = new FormData();
 	form.append('file', new Blob([readFileSync(archive)], { type: 'application/zip' }), 'squared-squarecloud.zip');
@@ -80,8 +86,7 @@ try {
 	const ready = await waitForReadiness({ client, appId, appUrl: inspection.appUrl, startedAt: deploymentStartedAt });
 	const idleStatus = await client.get(`/apps/${encodeURIComponent(appId)}/status`);
 	const startup = await waitForStartupLog(client, appId);
-	if (!startup) throw new Error('Squared startup log was not available after the application became reachable');
-	if (Number(startup.nodeVersion.split('.')[0]) !== 24) {
+	if (startup && Number(startup.nodeVersion.split('.')[0]) !== 24) {
 		throw new Error(`Square Cloud started Squared on Node ${startup.nodeVersion}; Node.js 24 is required`);
 	}
 
@@ -103,19 +108,19 @@ try {
 	const rows = [
 		['Deployment', 'successful; ZIP committed and application is running'],
 		['Application', `${inspection.appUrl} (${appId})`],
-		['Runtime', `Squared ${manifest.version}; Node ${startup.nodeVersion}; ${startup.host}:${startup.port}`],
-		['Profile', '1024 MB reserved; PostgreSQL external'],
+		['Runtime', startup ? `Squared ${manifest.version}; Node ${startup.nodeVersion}; ${startup.host}:${startup.port}` : `Squared ${manifest.version}; startup log unavailable`],
+		['Profile', '1024 MB configured; SQLite on persistent application storage by default'],
 		['Artifact', `${zipBytes} bytes; SHA-256 ${manifest.sha256}`],
-		['Pre-deploy snapshot', `${snapshot.name} (${snapshot.versionId})`],
+		['Pre-deploy snapshot', snapshot ? `${snapshot.name} (${snapshot.versionId})` : 'not required; no responsive previous version'],
 		['Readiness time', `${(ready.readyAt - deploymentStartedAt) / 1000}s from start/restart request`],
-		['Health/editor/auth', 'healthz, readiness, editor and Bearer authentication passed'],
-		['Production smoke', 'PostgreSQL-backed create/read, manual execution, webhook, persistence readback and cleanup passed'],
+		['Health/editor/auth', 'healthz, readiness, editor, first-boot state and protected API checks passed'],
+		['Production smoke', smoke.mode === 'integration token' ? 'Authenticated workflow create/read, execution, webhook and cleanup passed' : 'Safe public checks passed; no account or workflows were created'],
 		['Memory at rest', idleStatus.ram || 'not reported by status endpoint'],
 		['CPU at rest', idleStatus.cpu || 'not reported by status endpoint'],
 		['Startup peak memory', summarizePeak(startupSamples, 'ram')],
 		['Workflow CPU/RAM sample', summarizeResources(runSamples)],
 		['Latest post-deploy metric', metricsLatest ? `${metricsLatest.date}: CPU ${metricsLatest.cpu}%, RAM ${metricsLatest.ram} MB` : 'no fresh five-minute metric sample available'],
-		['Application status/uptime', `${postStatus.status || 'unknown'}; ${postStatus.uptime ?? 'uptime not reported'}`],
+		['Application status/uptime', `${postStatus.status || 'unknown'}; ${summarizeUptime(postStatus.uptime)}`],
 		['Restart/error data', `restart count not exposed by documented API; ${errors} error-like log lines in fetched logs`],
 		['Previous state', `${inspection.appStatus.status || 'unknown'} before deploy; one start/restart request was issued to apply the ZIP`],
 	];
@@ -161,6 +166,21 @@ async function createPreDeploySnapshot(client, appId) {
 		await wait(5_000);
 	}
 	throw new Error('Square Cloud did not expose the new pre-deploy snapshot within 160 seconds; no ZIP was committed');
+}
+
+async function existingVersionResponds(appUrl, status) {
+	if (!appIsRunning(status)) return false;
+	try {
+		const response = await fetch(appUrl, { signal: AbortSignal.timeout(10_000), redirect: 'manual' });
+		if (response.status < 200 || response.status >= 400) {
+			await response.body?.cancel();
+			return false;
+		}
+		const page = await response.text();
+		return /<title>\s*(?:Squared|n8n)\b/i.test(page);
+	} catch {
+		return false;
+	}
 }
 
 async function waitForReadiness({ client, appId, appUrl, startedAt, expectedProduct = 'squared' }) {
@@ -219,14 +239,13 @@ async function waitForStartupLog(client, appId) {
 }
 
 async function runProductionSmoke({ client, appId, appUrl, accessToken }) {
-	throwIfNoRuntimeToken(accessToken);
 	const samplesDuringExecution = [];
 	const apiUrl = (path) => new URL(path, appUrl);
-	const api = (path, options = {}) => fetch(apiUrl(path), {
+	const api = (path, options = {}, token = accessToken) => fetch(apiUrl(path), {
 		...options,
 		headers: {
 			...(options.body ? { 'content-type': 'application/json' } : {}),
-			authorization: `Bearer ${accessToken}`,
+			...(token ? { authorization: `Bearer ${token}` } : {}),
 			...options.headers,
 		},
 		signal: AbortSignal.timeout(15_000),
@@ -234,41 +253,68 @@ async function runProductionSmoke({ client, appId, appUrl, accessToken }) {
 
 	const root = await fetch(appUrl, { signal: AbortSignal.timeout(15_000) });
 	if (!root.ok || !(await root.text()).includes('<title>Squared</title>')) throw new Error('Production editor page was not served');
-	const unauthenticated = await fetch(apiUrl('/api/workflows'), { signal: AbortSignal.timeout(15_000) });
-	if (unauthenticated.status !== 401) throw new Error('Production workflow API did not enforce Bearer authentication');
-	const authenticated = await api('/api/workflows');
-	if (!authenticated.ok || !Array.isArray(await authenticated.json())) throw new Error('Production workflow API did not accept its configured Bearer token');
+	const authStateResponse = await api('/api/auth/status', {}, null);
+	if (!authStateResponse.ok) throw new Error('Production first-boot status endpoint was unavailable');
+	const authState = await authStateResponse.json();
+	if (typeof authState.setupRequired !== 'boolean' || typeof authState.authenticated !== 'boolean') {
+		throw new Error('Production first-boot status response was invalid');
+	}
+	const unauthenticated = await api('/api/workflows', {}, null);
+	if (unauthenticated.status !== 401) throw new Error('Production workflow API did not enforce authentication');
 
+	if (authState.setupRequired) {
+		const bootstrapAttempt = await api('/api/auth/bootstrap', {
+			method: 'POST',
+			body: JSON.stringify({
+				code: randomBytes(32).toString('base64url'),
+				email: 'squared-smoke@example.invalid',
+				password: randomBytes(24).toString('base64url'),
+			}),
+		}, null);
+		if (bootstrapAttempt.status !== 403) throw new Error('Production first-admin setup accepted an invalid bootstrap code');
+		const stateAfterProbe = await api('/api/auth/status', {}, null).then((response) => response.json());
+		if (!stateAfterProbe.setupRequired) throw new Error('Production smoke unexpectedly changed first-admin setup state');
+	}
+
+	if (!accessToken) return { samplesDuringExecution, mode: 'public checks' };
+	return { ...(await runAuthenticatedProductionSmoke({ api, client, appId, samplesDuringExecution })), mode: 'integration token' };
+}
+
+async function runAuthenticatedProductionSmoke({ api, client, appId, samplesDuringExecution }) {
+	const authenticated = await api('/api/workflows');
+	if (!authenticated.ok || !Array.isArray(await authenticated.json())) throw new Error('Production workflow API did not accept its configured integration token');
 	let manualWorkflowId;
 	let webhookWorkflowId;
+	const executionIds = [];
 	let cleanupFailed = false;
 	try {
-		const manualName = `Tarefa 003 smoke manual ${randomUUID()}`;
+		const manualName = `Tarefa 004 smoke manual ${randomUUID()}`;
 		const manual = await postWorkflow(api, {
 			name: manualName,
 			active: false,
 			nodes: [
 				{ id: randomUUID(), type: 'trigger.manual', name: 'Manual', parameters: {} },
-				{ id: randomUUID(), type: 'data.set', name: 'Set', parameters: { values: { message: 'tarefa-003-smoke', run: '={{ $execution.id }}' } } },
+				{ id: randomUUID(), type: 'data.set', name: 'Set', parameters: { values: { message: 'tarefa-004-smoke', run: '={{ $execution.id }}' } } },
 			],
 		});
 		manualWorkflowId = manual.id;
 		const persistedManual = await api(`/api/workflows/${encodeURIComponent(manualWorkflowId)}`);
 		if (!persistedManual.ok || (await persistedManual.json()).name !== manualName) {
-			throw new Error('Production PostgreSQL workflow create/read persistence check failed');
+			throw new Error('Production workflow create/read persistence check failed');
 		}
 
 		const manualRun = await api(`/api/workflows/${encodeURIComponent(manualWorkflowId)}/run`, {
-			method: 'POST', body: JSON.stringify({ input: { source: 'tarefa-003-smoke' } }),
+			method: 'POST', body: JSON.stringify({ input: { source: 'tarefa-004-smoke' } }),
 		});
 		if (manualRun.status !== 202) throw new Error(`Manual production workflow returned HTTP ${manualRun.status}`);
 		const manualExecutionId = (await manualRun.json()).id;
+		executionIds.push(manualExecutionId);
 		const manualExecution = await waitForExecution(api, client, appId, manualExecutionId, samplesDuringExecution);
-		if (manualExecution.status !== 'succeeded' || manualExecution.output?.message !== 'tarefa-003-smoke' || manualExecution.output?.source !== 'tarefa-003-smoke') {
+		if (manualExecution.status !== 'succeeded' || manualExecution.output?.message !== 'tarefa-004-smoke' || manualExecution.output?.source !== 'tarefa-004-smoke') {
 			throw new Error('Production manual workflow execution did not return the expected output');
 		}
 
-		const webhookName = `Tarefa 003 smoke webhook ${randomUUID()}`;
+		const webhookName = `Tarefa 004 smoke webhook ${randomUUID()}`;
 		const webhook = await postWorkflow(api, {
 			name: webhookName,
 			active: true,
@@ -284,18 +330,27 @@ async function runProductionSmoke({ client, appId, appUrl, accessToken }) {
 		}
 
 		const webhookRun = await api(`/webhook/${encodeURIComponent(webhookWorkflowId)}`, {
-			method: 'POST', body: JSON.stringify({ message: 'tarefa-003-webhook-smoke' }),
+			method: 'POST', body: JSON.stringify({ message: 'tarefa-004-webhook-smoke' }),
 		});
 		if (webhookRun.status !== 202) throw new Error(`Production webhook returned HTTP ${webhookRun.status}`);
 		const webhookExecutionId = (await webhookRun.json()).id;
+		executionIds.push(webhookExecutionId);
 		const webhookExecution = await waitForExecution(api, client, appId, webhookExecutionId, samplesDuringExecution);
-		if (webhookExecution.status !== 'succeeded' || webhookExecution.output?.echoed !== 'tarefa-003-webhook-smoke') {
+		if (webhookExecution.status !== 'succeeded' || webhookExecution.output?.echoed !== 'tarefa-004-webhook-smoke') {
 			throw new Error('Production webhook workflow execution did not return the expected output');
 		}
 	} finally {
 		for (const workflowId of [webhookWorkflowId, manualWorkflowId].filter(Boolean)) {
 			try {
 				const deleted = await api(`/api/workflows/${encodeURIComponent(workflowId)}`, { method: 'DELETE' });
+				if (deleted.status !== 204) cleanupFailed = true;
+			} catch {
+				cleanupFailed = true;
+			}
+		}
+		for (const executionId of executionIds) {
+			try {
+				const deleted = await api(`/api/executions/${encodeURIComponent(executionId)}`, { method: 'DELETE' });
 				if (deleted.status !== 204) cleanupFailed = true;
 			} catch {
 				cleanupFailed = true;
@@ -362,16 +417,34 @@ function summarizeResources(samples) {
 	return `CPU ${latest.cpu || 'not reported'}, RAM ${latest.ram || 'not reported'}`;
 }
 
+function summarizeUptime(value) {
+	if (value === undefined || value === null || value === '') return 'not reported';
+	const numeric = Number(value);
+	if (!Number.isFinite(numeric)) return String(value);
+	if (numeric > 1_000_000_000_000) {
+		const startedAt = new Date(numeric);
+		const elapsedMs = Date.now() - numeric;
+		if (!Number.isFinite(startedAt.getTime()) || elapsedMs < 0) return String(value);
+		return `${formatDuration(elapsedMs)} (since ${startedAt.toISOString()})`;
+	}
+	return numeric >= 0 ? formatDuration(numeric) : String(value);
+}
+
+function formatDuration(milliseconds) {
+	const seconds = Math.floor(milliseconds / 1000);
+	const days = Math.floor(seconds / 86_400);
+	const hours = Math.floor((seconds % 86_400) / 3_600);
+	const minutes = Math.floor((seconds % 3_600) / 60);
+	const remainingSeconds = seconds % 60;
+	return days ? `${days}d ${hours}h ${minutes}m` : hours ? `${hours}h ${minutes}m ${remainingSeconds}s` : `${minutes}m ${remainingSeconds}s`;
+}
+
 function latestSample(samples) {
 	return [...samples].sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
 }
 
 function countRuntimeErrors(logs) {
 	return logs.split(/\r?\n/).filter((line) => /\b(error|fatal|uncaught)\b/i.test(line)).length;
-}
-
-function throwIfNoRuntimeToken(value) {
-	if (!value) throw new Error('The application has no readable SQUARED_ACCESS_TOKEN for the production smoke test');
 }
 
 function safeError(error) {

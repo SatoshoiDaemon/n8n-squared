@@ -20,6 +20,7 @@ _START_PACKAGE
 .idea
 nodelinter.config.json
 **/package-lock.json
+!/package-lock.json
 packages/**/.turbo
 .turbo
 .stryker-tmp/
@@ -82,6 +83,8 @@ packages/cli/src/commands/export/outputs
 .superset
 .conductor
 .n8n
+.squared-data/
+squared-data/
 IMPROVEMENTS.md
 .playwright-mcp
 stryker.log

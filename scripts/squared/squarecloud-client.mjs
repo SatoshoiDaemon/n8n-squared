@@ -1,4 +1,6 @@
 import { appendFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export const TARGET_APP_ID = '59e2efa4975445339e8a6f7ad5295821';
 const API_BASE = 'https://api.squarecloud.app/v2';
@@ -62,7 +64,7 @@ export class SquareCloudClient {
 }
 
 export function requireTargetAppId(value = process.env.SQUARECLOUD_APP_ID) {
-	if (!value) throw new Error('Required GitHub Actions secret SQUARECLOUD_APP_ID is missing');
+	if (!value) throw new Error('Required Square Cloud application ID is missing');
 	if (value !== TARGET_APP_ID) throw new Error('SQUARECLOUD_APP_ID does not match the configured production application');
 	return value;
 }
@@ -111,13 +113,21 @@ export function runtimeEnvironmentReport(envs) {
 	const databaseValue = nonEmpty(envs.SQUARED_DATABASE_URL) ? envs.SQUARED_DATABASE_URL : envs.DATABASE_URL;
 	const databaseName = nonEmpty(envs.SQUARED_DATABASE_URL) ? 'SQUARED_DATABASE_URL' : 'DATABASE_URL';
 	const requirements = [];
-	if (!nonEmpty(databaseValue)) requirements.push('SQUARED_DATABASE_URL (or DATABASE_URL)');
-	else if (!isExternalPostgresUrl(databaseValue)) requirements.push(`${databaseName} must be an external PostgreSQL URL`);
-	if (!nonEmpty(envs.SQUARED_ENCRYPTION_KEY) || envs.SQUARED_ENCRYPTION_KEY.length < 32) {
-		requirements.push('SQUARED_ENCRYPTION_KEY (at least 32 characters)');
+	if (nonEmpty(databaseValue) && !isPostgresUrl(databaseValue)) {
+		requirements.push(`${databaseName} must be a PostgreSQL URL when configured`);
 	}
-	if (!nonEmpty(envs.SQUARED_ACCESS_TOKEN) || envs.SQUARED_ACCESS_TOKEN.length < 24) {
-		requirements.push('SQUARED_ACCESS_TOKEN (at least 24 characters)');
+	if (nonEmpty(envs.SQUARED_ENCRYPTION_KEY) && envs.SQUARED_ENCRYPTION_KEY.length < 32) {
+		requirements.push('SQUARED_ENCRYPTION_KEY must contain at least 32 characters when configured');
+	}
+	if (nonEmpty(envs.SQUARED_ACCESS_TOKEN) && envs.SQUARED_ACCESS_TOKEN.length < 24) {
+		requirements.push('SQUARED_ACCESS_TOKEN must contain at least 24 characters when configured');
+	}
+	if (nonEmpty(envs.SQUARED_DATA_DIR)) {
+		const dataDirectory = resolve(envs.SQUARED_DATA_DIR);
+		const relativeToTemp = relative(resolve(tmpdir()), dataDirectory);
+		if (!isAbsolute(relativeToTemp) && (relativeToTemp === '' || (relativeToTemp !== '..' && !relativeToTemp.startsWith(`..${sep}`)))) {
+			requirements.push('SQUARED_DATA_DIR cannot be inside the operating system temporary directory');
+		}
 	}
 	for (const name of ['SQUARED_PORT', 'PORT']) {
 		if (nonEmpty(envs[name]) && Number(envs[name]) !== 80) requirements.push(`${name} must be unset or 80`);
@@ -127,8 +137,9 @@ export function runtimeEnvironmentReport(envs) {
 	}
 	return {
 		databaseVariable: nonEmpty(databaseValue) ? databaseName : null,
-		encryptionKeyPresent: nonEmpty(envs.SQUARED_ENCRYPTION_KEY) && envs.SQUARED_ENCRYPTION_KEY.length >= 32,
-		accessTokenPresent: nonEmpty(envs.SQUARED_ACCESS_TOKEN) && envs.SQUARED_ACCESS_TOKEN.length >= 24,
+		databaseBackend: nonEmpty(databaseValue) ? 'PostgreSQL' : 'SQLite on persistent application storage',
+		encryptionKeyOverridePresent: nonEmpty(envs.SQUARED_ENCRYPTION_KEY),
+		accessTokenPresent: nonEmpty(envs.SQUARED_ACCESS_TOKEN),
 		portCompatible: !requirements.some((item) => item.includes('PORT')),
 		hostCompatible: !requirements.includes('SQUARED_HOST must be unset or 0.0.0.0'),
 		requirements,
@@ -169,13 +180,10 @@ function nonEmpty(value) {
 	return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isExternalPostgresUrl(value) {
+function isPostgresUrl(value) {
 	try {
 		const url = new URL(value);
-		return (
-			['postgres:', 'postgresql:'].includes(url.protocol) &&
-			!['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLowerCase())
-		);
+		return ['postgres:', 'postgresql:'].includes(url.protocol);
 	} catch {
 		return false;
 	}

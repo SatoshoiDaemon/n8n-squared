@@ -2,11 +2,13 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { clearSessionCookie, sessionCookie, sessionTokenFromRequest } from '../auth/service.js';
 import { RequestError } from '../errors.js';
 
 const assets = new URL('../assets/', import.meta.url);
 
-export function createHttpServer({ config, store, workflows, vault }) {
+export function createHttpServer({ config, store, workflows, vault, auth }) {
+	const authAttempts = new Map();
 	const server = createServer(async (request, response) => {
 		try {
 			const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
@@ -16,9 +18,39 @@ export function createHttpServer({ config, store, workflows, vault }) {
 			if (request.method === 'GET' && url.pathname === '/') return sendAsset(response, 'index.html', 'text/html; charset=utf-8');
 			if (request.method === 'GET' && url.pathname === '/app.js') return sendAsset(response, 'app.js', 'text/javascript; charset=utf-8');
 			if (request.method === 'GET' && url.pathname === '/styles.css') return sendAsset(response, 'styles.css', 'text/css; charset=utf-8');
-			if (!authorized(request.headers.authorization, config.accessToken)) {
-				return sendJson(response, 401, { error: 'Enter the application access token to continue' });
+
+			if (request.method === 'GET' && url.pathname === '/api/auth/status') {
+				return sendJson(response, 200, await auth.status(sessionTokenFromRequest(request)));
 			}
+			if (request.method === 'POST' && url.pathname === '/api/auth/bootstrap') {
+				ensureSameOrigin(request);
+				if (!allowAuthAttempt(request, authAttempts)) return sendJson(response, 429, { error: 'Too many authentication attempts; try again later' });
+				const body = await readJson(request, config.maxRequestBytes);
+				const session = await auth.bootstrap(body);
+				clearAuthAttempts(request, authAttempts);
+				return sendJson(response, 201, { email: session.email }, { 'set-cookie': sessionCookie(session.sessionToken) });
+			}
+			if (request.method === 'POST' && url.pathname === '/api/auth/login') {
+				ensureSameOrigin(request);
+				if (!allowAuthAttempt(request, authAttempts)) return sendJson(response, 429, { error: 'Too many authentication attempts; try again later' });
+				const body = await readJson(request, config.maxRequestBytes);
+				const session = await auth.login(body);
+				clearAuthAttempts(request, authAttempts);
+				return sendJson(response, 200, { email: session.email }, { 'set-cookie': sessionCookie(session.sessionToken) });
+			}
+			if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
+				ensureSameOrigin(request);
+				const sessionToken = sessionTokenFromRequest(request);
+				if (!(await auth.status(sessionToken)).authenticated) return sendJson(response, 401, { error: 'Authentication required' });
+				await auth.logout(sessionToken);
+				return sendJson(response, 204, null, { 'set-cookie': clearSessionCookie() });
+			}
+
+			const sessionToken = sessionTokenFromRequest(request);
+			const authenticatedBySession = (await auth.status(sessionToken)).authenticated;
+			const authenticatedByToken = authorized(request.headers.authorization, config.accessToken);
+			if (!authenticatedBySession && !authenticatedByToken) return sendJson(response, 401, { error: 'Authentication required' });
+			if (authenticatedBySession && isMutation(request.method)) ensureSameOrigin(request);
 
 			if (request.method === 'GET' && url.pathname === '/api/workflows') {
 				return sendJson(response, 200, await workflows.list());
@@ -63,6 +95,11 @@ export function createHttpServer({ config, store, workflows, vault }) {
 				if (!execution) throw httpError(404, 'Execution not found');
 				return sendJson(response, 200, execution);
 			}
+			if (executionMatch && request.method === 'DELETE') {
+				const removed = await store.deleteExecution(decodeURIComponent(executionMatch[1]));
+				if (!removed) throw httpError(404, 'Execution not found');
+				return sendJson(response, 204, null);
+			}
 			if (request.method === 'GET' && url.pathname === '/api/credentials') {
 				return sendJson(response, 200, await store.listCredentials());
 			}
@@ -90,7 +127,7 @@ export function createHttpServer({ config, store, workflows, vault }) {
 				return;
 			}
 			const status = error.statusCode || (error instanceof SyntaxError ? 400 : 500);
-			if (status >= 500) console.error('Request failed', error);
+			if (status >= 500) console.error('Request failed', error?.name || 'Error', error?.code || 'unknown');
 			sendJson(response, status, { error: status >= 500 ? 'Internal server error' : error.message });
 		}
 	});
@@ -100,10 +137,54 @@ export function createHttpServer({ config, store, workflows, vault }) {
 }
 
 function authorized(header, expected) {
+	if (!expected) return false;
 	const supplied = header?.startsWith('Bearer ') ? header.slice(7) : '';
 	const actual = Buffer.from(supplied);
 	const token = Buffer.from(expected);
 	return actual.length === token.length && timingSafeEqual(actual, token);
+}
+
+function isMutation(method) {
+	return !['GET', 'HEAD', 'OPTIONS'].includes(method);
+}
+
+function ensureSameOrigin(request) {
+	if (request.headers['sec-fetch-site'] === 'cross-site') throw httpError(403, 'Cross-origin request rejected');
+	const origin = request.headers.origin;
+	if (!origin) return;
+	try {
+		if (new URL(origin).host !== request.headers.host) throw httpError(403, 'Cross-origin request rejected');
+	} catch (error) {
+		if (error instanceof RequestError) throw error;
+		throw httpError(403, 'Cross-origin request rejected');
+	}
+}
+
+function authAttemptKey(request) {
+	const clientAddress = request.headers['cf-connecting-ip'] || request.socket.remoteAddress || 'unknown';
+	return String(clientAddress).slice(0, 96);
+}
+
+function allowAuthAttempt(request, attempts) {
+	const now = Date.now();
+	const key = authAttemptKey(request);
+	for (const [candidate, entry] of attempts) {
+		if (entry.resetAt <= now) attempts.delete(candidate);
+	}
+	if (!attempts.has(key) && attempts.size >= 5_000) {
+		const oldest = attempts.keys().next().value;
+		if (oldest !== undefined) attempts.delete(oldest);
+	}
+	const current = attempts.get(key);
+	if (current && current.count >= 8) return false;
+	attempts.set(key, current && current.resetAt > now
+		? { count: current.count + 1, resetAt: current.resetAt }
+		: { count: 1, resetAt: now + 15 * 60 * 1000 });
+	return true;
+}
+
+function clearAuthAttempts(request, attempts) {
+	attempts.delete(authAttemptKey(request));
 }
 
 async function readJson(request, maxBytes) {
@@ -129,11 +210,12 @@ async function sendAsset(response, name, contentType) {
 	response.end(body);
 }
 
-function sendJson(response, status, body) {
+function sendJson(response, status, body, headers = {}) {
 	response.writeHead(status, {
 		'content-type': 'application/json; charset=utf-8',
 		'cache-control': 'no-store',
 		'x-content-type-options': 'nosniff',
+		...headers,
 	});
 	response.end(status === 204 ? undefined : JSON.stringify(body));
 }

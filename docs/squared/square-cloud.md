@@ -15,7 +15,7 @@ O perfil de 1024 MB é a reserva configurada para o container. Não representa m
 Os secrets de deploy são usados somente pelo GitHub Actions:
 
 - `SQUARECLOUD_API_KEY`: autenticação da API oficial da Square Cloud.
-- `SQUARECLOUD_APP_ID`: ID do app de destino.
+- `SQUARECLOUD_APP_ID`: ID do app de destino. Se esse secret estiver ausente, o workflow usa o ID público fornecido para esta implantação.
 
 O token da API precisa dos escopos `account:read`, `apps:read`, `apps:deploy`, `apps:control`, `envs:read`, `snapshots:read` e `snapshots:write` para inspecionar, publicar, acompanhar e recuperar a aplicação.
 

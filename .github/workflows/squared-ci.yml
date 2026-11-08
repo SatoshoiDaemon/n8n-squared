@@ -80,7 +80,7 @@ jobs:
         run: node scripts/squared/inspect-squarecloud.mjs
         env:
           SQUARECLOUD_API_KEY: ${{ secrets.SQUARECLOUD_API_KEY }}
-          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID }}
+          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
 
   squarecloud_deploy:
     if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/deploy/squarecloud-production')) }}
@@ -105,5 +105,5 @@ jobs:
         run: node scripts/squared/deploy-squarecloud.mjs
         env:
           SQUARECLOUD_API_KEY: ${{ secrets.SQUARECLOUD_API_KEY }}
-          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID }}
+          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
           SQUARED_MEMORY_MB: '1024'

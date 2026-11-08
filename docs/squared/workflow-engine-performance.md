@@ -27,11 +27,11 @@ Uma amostra separada foi executada com Node.js `24.19.0` e o pacote npm externo 
 
 | Medida | Resultado observado |
 | --- | ---: |
-| Catálogo: duração | 210.131 ms |
-| Catálogo: delta RSS / heap | +3,559,424 / +2,540,568 bytes |
-| Primeiro import e execução de Set v3.5 | 1,065.192 ms |
-| Primeiro import: delta RSS / heap | +38,797,312 / +21,995,168 bytes |
-| Set aquecido: média / p50 / p95 | 0.131 / 0.120 / 0.190 ms |
-| Set aquecido: vazão sequencial | 7,577 execuções/s |
+| Catálogo: duração | 193.328 ms |
+| Catálogo: delta RSS / heap | +6,041,600 / +2,546,424 bytes |
+| Primeiro import e execução de Set v3.5 | 819.375 ms |
+| Primeiro import: delta RSS / heap | +41,230,336 / +21,961,240 bytes |
+| Set aquecido: média / p50 / p95 | 0.130 / 0.111 / 0.207 ms |
+| Set aquecido: vazão sequencial | 7,658 execuções/s |
 
-O delta RSS aquecido foi +39,612,416 bytes em relação à amostra após catálogo. Uma só execução de benchmark não é baseline de produção: RSS inclui dependências carregadas por `Set`, o ambiente era Windows local e o pacote permaneceu externo. Repita no alvo Square Cloud e com os pacotes instalados que pretende oferecer antes de dimensionar uma instância de 1024 MB.
+O delta RSS/heap aquecido foi +41,873,408 / +22,257,856 bytes em relação à amostra após catálogo. Uma só execução de benchmark não é baseline de produção: RSS inclui dependências carregadas por `Set`, o ambiente era Windows local e o pacote permaneceu externo. Repita no alvo Square Cloud e com os pacotes instalados que pretende oferecer antes de dimensionar uma instância de 1024 MB.

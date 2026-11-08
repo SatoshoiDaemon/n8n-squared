@@ -49,7 +49,7 @@ test('catalog discovers node and credential descriptions without importing packa
 		assert.equal(enterprise.compatibility.loaded, false);
 		assert.equal(enterprise.description, undefined);
 		assert.equal(loaded.credentials[0].configurable, true);
-		assert.throws(() => catalog.assertExecutable('n8n-nodes-demo.example'), /no isolated n8n node process/);
+		assert.throws(() => catalog.assertExecutable('n8n-nodes-demo.example'), /has not passed runtime loading and execution-contract checks/);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

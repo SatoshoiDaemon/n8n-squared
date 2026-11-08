@@ -20,9 +20,9 @@ Nos acessos seguintes, a tela pede e-mail e senha. A senha usa scrypt com salt a
 
 ## Manifesto, runtime e memória
 
-O empacotador grava `squarecloud.app` com `RUNTIME=nodejs`, `VERSION=recommended`, `MEMORY=1024`, `MAIN=src/main.js` e `START=npm start`. A linha `recommended` seleciona a versão recomendada pela Square Cloud. O runtime usa `PORT=80` e `0.0.0.0`, a menos que overrides compatíveis sejam informados.
+O empacotador grava `squarecloud.app` com `RUNTIME=nodejs`, `VERSION=recommended`, `MEMORY=3072`, `MAIN=src/main.js` e `START=npm start`. A linha `recommended` seleciona a versão recomendada pela Square Cloud. O runtime usa `PORT=80` e `0.0.0.0`, a menos que overrides compatíveis sejam informados.
 
-O perfil inicial permanece em 1024 MB. Esse valor representa memória alocada, não consumo medido. A avaliação de redução para 512 MB depende de medições do Squared sob carga representativa.
+O perfil usa 3072 MB porque a instalação inicial travada das dependências oficiais do n8n alcançou 2,07 GB de memória residente durante o smoke do ZIP. O runtime libera essa memória transitória após o carregamento; o consumo em repouso e durante execuções é medido separadamente no deploy. O valor é alocação máxima, não uma estimativa do consumo normal.
 
 ## Secrets e variáveis opcionais
 

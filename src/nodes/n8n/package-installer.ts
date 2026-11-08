@@ -26,8 +26,9 @@ const REQUIRED_RUNTIME_PACKAGES = Object.freeze({
 export async function ensureN8nPackages(packagesDirectory: string, options: {
 	env?: NodeJS.ProcessEnv;
 	seedArchivePath?: string;
+	lockfilePath?: string;
 	runSeedExtract?: (archivePath: string, prefix: string) => Promise<void>;
-	runInstall?: (prefix: string, env: NodeJS.ProcessEnv) => Promise<void>;
+	runInstall?: (prefix: string, env: NodeJS.ProcessEnv, useLockfile: boolean) => Promise<void>;
 } = {}): Promise<{ installed: boolean; packages: string[]; packagesDirectory: string }> {
 	const env = options.env ?? process.env;
 	const modulesDirectory = resolve(packagesDirectory);
@@ -55,8 +56,22 @@ export async function ensureN8nPackages(packagesDirectory: string, options: {
 	manifest.dependencies = { ...(manifest.dependencies ?? {}), ...OFFICIAL_N8N_PACKAGES };
 	await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
+	let useLockfile = false;
+	if (options.lockfilePath && await fileExists(options.lockfilePath)) {
+		const lockfileContents = await readFile(options.lockfilePath, 'utf8');
+		const lockfile = JSON.parse(lockfileContents) as Record<string, any>;
+		const lockedDependencies = lockfile?.packages?.['']?.dependencies;
+		const pinnedRuntime = Object.entries(OFFICIAL_N8N_PACKAGES).every(([name, version]) => lockedDependencies?.[name] === version);
+		const lockMatchesManifest = Object.entries(manifest.dependencies).every(([name, version]) => lockedDependencies?.[name] === version);
+		if (!pinnedRuntime) throw new Error('The bundled n8n runtime lockfile does not pin the expected official package versions');
+		if (lockMatchesManifest && Object.keys(lockedDependencies).length === Object.keys(manifest.dependencies).length) {
+			await writeFile(join(installPrefix, 'package-lock.json'), lockfileContents);
+			useLockfile = true;
+		}
+	}
+
 	const install = options.runInstall ?? runNpmInstall;
-	await install(installPrefix, env);
+	await install(installPrefix, env, useLockfile);
 	if (!(await hasRequiredPackages(modulesDirectory))) {
 		throw new Error('The pinned n8n runtime package installation is incomplete');
 	}
@@ -107,14 +122,14 @@ async function readJson(path: string): Promise<Record<string, any> | null> {
 	}
 }
 
-function runNpmInstall(prefix: string, env: NodeJS.ProcessEnv): Promise<void> {
+function runNpmInstall(prefix: string, env: NodeJS.ProcessEnv, useLockfile: boolean): Promise<void> {
 	return new Promise((resolveInstall, rejectInstall) => {
 		const npmExecPath = env.npm_execpath;
 		void (async () => {
 			const cliPath = npmExecPath ?? (process.platform === 'win32' ? await findWindowsNpmCli(env) : undefined);
 			const command = cliPath ? process.execPath : 'npm';
 			const args = cliPath ? [cliPath] : [];
-			args.push('install', '--prefix', prefix, '--omit=dev', '--no-audit', '--no-fund');
+			args.push(useLockfile ? 'ci' : 'install', '--prefix', prefix, '--omit=dev', '--no-audit', '--no-fund');
 			const child = spawn(command, args, {
 				cwd: prefix,
 				env,

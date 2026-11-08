@@ -66,3 +66,30 @@ test('extracts the deploy seed into persistent storage before falling back to np
 		await rm(temporary, { recursive: true, force: true });
 	}
 });
+
+test('uses the packaged, pinned n8n lockfile for the first persistent installation', async () => {
+	const temporary = await mkdtemp(join(tmpdir(), 'squared-n8n-lock-'));
+	try {
+		const installPrefix = join(temporary, 'persistent', 'n8n-runtime');
+		const packagesDirectory = join(installPrefix, 'node_modules');
+		const lockfilePath = join(temporary, 'n8n-package-lock.json');
+		const lockfile = { name: 'squared-n8n-runtime', lockfileVersion: 3, packages: { '': { dependencies: OFFICIAL_N8N_PACKAGES } } };
+		await writeFile(lockfilePath, JSON.stringify(lockfile));
+		let usedLockfile = false;
+		const result = await ensureN8nPackages(packagesDirectory, {
+			lockfilePath,
+			runInstall: async (prefix, _env, useLockfile) => {
+				usedLockfile = useLockfile && JSON.stringify(JSON.parse(await readFile(join(prefix, 'package-lock.json'), 'utf8'))) === JSON.stringify(lockfile);
+				for (const [name, version] of Object.entries({ ...OFFICIAL_N8N_PACKAGES, 'n8n-workflow': '2.42.4' })) {
+					const packageDirectory = join(packagesDirectory, ...name.split('/'));
+					await mkdir(packageDirectory, { recursive: true });
+					await writeFile(join(packageDirectory, 'package.json'), JSON.stringify({ name, version }));
+				}
+			},
+		});
+		assert.equal(usedLockfile, true);
+		assert.equal(result.installed, true);
+	} finally {
+		await rm(temporary, { recursive: true, force: true });
+	}
+});

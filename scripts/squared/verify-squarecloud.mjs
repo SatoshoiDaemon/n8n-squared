@@ -43,10 +43,10 @@ export function verifySquareCloudPackage() {
 	const requiredEntries = [
 		'package.json',
 		'package-lock.json',
+		'vendor/n8n-package-lock.json',
 		'squarecloud.app',
 		'src/main.js',
 		'node_modules/pg/package.json',
-		'vendor/n8n-runtime.tar.br',
 	];
 	for (const entry of requiredEntries) {
 		if (!entries.includes(entry)) throw new Error(`Square Cloud ZIP is missing ${entry}`);
@@ -67,15 +67,24 @@ export function verifySquareCloudPackage() {
 	}
 	if (
 		!manifest.n8nRuntime ||
-		manifest.n8nRuntime.seedArchive !== 'vendor/n8n-runtime.tar.br' ||
-		manifest.n8nRuntime.seedBytes <= 0 ||
-		!/^[a-f0-9]{64}$/.test(manifest.n8nRuntime.seedSha256 || '') ||
-		manifest.n8nRuntime.licenseBundle?.file !== 'THIRD_PARTY_LICENSES.txt' ||
-		manifest.n8nRuntime.licenseBundle?.files <= 0 ||
-		manifest.n8nRuntime.licenseBundle?.bytes <= 0 ||
-		!/^[a-f0-9]{64}$/.test(manifest.n8nRuntime.licenseBundle?.sha256 || '')
+		manifest.n8nRuntime.installMode !== 'npm ci on first start into persistent application storage' ||
+		manifest.n8nRuntime.persistentDirectory !== 'n8n-nodes/node_modules' ||
+		manifest.n8nRuntime.lockfile !== 'vendor/n8n-package-lock.json' ||
+		!/^[a-f0-9]{64}$/.test(manifest.n8nRuntime.lockfileSha256 || '') ||
+		manifest.n8nRuntime.publishedPackageLicenses !== 'retained in the installed official npm packages' ||
+		entries.some((entry) => entry.startsWith('vendor/n8n-runtime'))
 	) {
-		throw new Error('Square Cloud package is missing the n8n runtime seed or third-party license metadata');
+		throw new Error('Square Cloud package must declare persistent npm installation of the official n8n runtime');
+	}
+	const runtimeLockBytes = archiveOutput(['-p', archive, 'vendor/n8n-package-lock.json'], ['-xOf', archive, 'vendor/n8n-package-lock.json']);
+	const runtimeLockSha256 = createHash('sha256').update(runtimeLockBytes).digest('hex');
+	const runtimeLock = JSON.parse(runtimeLockBytes);
+	if (
+		runtimeLockSha256 !== manifest.n8nRuntime.lockfileSha256 ||
+		!runtimeLock.packages?.['']?.dependencies ||
+		Object.entries(runtimeLock.packages[''].dependencies).some(([name, version]) => manifest.n8nRuntime.packages[name] !== version)
+	) {
+		throw new Error('Square Cloud package has an invalid n8n runtime lockfile');
 	}
 	const expectedN8nPackages = {
 		'n8n-nodes-base': '2.42.5',
@@ -100,13 +109,14 @@ export function verifySquareCloudPackage() {
 	const expectedConfig = {
 		RUNTIME: 'nodejs',
 		VERSION: 'recommended',
-		MEMORY: process.env.SQUARED_MEMORY_MB || '1024',
+		MEMORY: process.env.SQUARED_MEMORY_MB || '3072',
 		MAIN: 'src/main.js',
 		START: 'npm start',
 	};
 	for (const [key, value] of Object.entries(expectedConfig)) {
 		if (squareCloudConfig[key] !== value) throw new Error(`Square Cloud configuration has an unexpected ${key} setting`);
 	}
+	if (manifest.memoryMb !== Number(expectedConfig.MEMORY)) throw new Error('Square Cloud manifest memory does not match squarecloud.app');
 
 	console.log(`Square Cloud ZIP verified: ${bytes} bytes; SHA-256 ${sha256}`);
 	return { archive, manifest, bytes, sha256 };

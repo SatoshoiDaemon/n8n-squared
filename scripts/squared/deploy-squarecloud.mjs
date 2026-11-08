@@ -110,9 +110,9 @@ try {
 		['Deployment', 'successful; ZIP committed and application is running'],
 		['Application', `${inspection.appUrl} (${appId})`],
 		['Runtime', startup ? `Squared ${manifest.version}; Node ${startup.nodeVersion}; ${startup.host}:${startup.port}` : `Squared ${manifest.version}; startup log unavailable`],
-		['Profile', '1024 MB configured; SQLite on persistent application storage by default'],
+		['Profile', `${manifest.memoryMb} MB configured; SQLite on persistent application storage by default`],
 		['Artifact', `${zipBytes} bytes; SHA-256 ${manifest.sha256}`],
-		['Official n8n runtime', `${n8nRuntime.nodes} package node types discovered; ${n8nRuntime.installMode}; pinned seed ${manifest.n8nRuntime.seedBytes} bytes`],
+		['Official n8n runtime', `${n8nRuntime.nodes} package node types discovered; ${n8nRuntime.installMode}; packages persist in ${manifest.n8nRuntime.persistentDirectory}`],
 		['Pre-deploy snapshot', snapshot ? `${snapshot.name} (${snapshot.versionId})` : 'not required; no responsive previous version'],
 		['Readiness time', `${(ready.readyAt - deploymentStartedAt) / 1000}s from start/restart request`],
 		['Health/editor/auth', 'healthz, readiness, editor, first-boot state and protected API checks passed'],
@@ -186,7 +186,7 @@ async function existingVersionResponds(appUrl, status) {
 }
 
 async function waitForReadiness({ client, appId, appUrl, startedAt, expectedProduct = 'squared' }) {
-	const deadline = Date.now() + 600_000;
+	const deadline = Date.now() + 30 * 60 * 1000;
 	let apiRunning = false;
 	let health = false;
 	let readyAt;
@@ -221,7 +221,7 @@ async function waitForReadiness({ client, appId, appUrl, startedAt, expectedProd
 		}
 		await wait(3_000);
 	}
-	if (!readyAt) throw new Error('Square Cloud application did not reach /healthz/readiness within 600 seconds');
+	if (!readyAt) throw new Error('Square Cloud application did not reach /healthz/readiness within 30 minutes');
 	return { readyAt, readyMs: readyAt - startedAt };
 }
 

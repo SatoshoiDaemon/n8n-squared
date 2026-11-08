@@ -12,7 +12,7 @@ const packagesDirectory = process.env.SQUARED_N8N_PACKAGES_DIR;
 test('loads and executes real versioned n8n-nodes-base modules', { skip: !packagesDirectory }, async () => {
 	const report = await runN8nBaseCompatibilityProbe(packagesDirectory);
 	assert.ok(report.nodesDiscovered >= 400);
-	assert.equal(report.executions.length, 39);
+	assert.equal(report.executions.length, 42);
 	assert.ok(report.executions.every((execution) => execution.status === 'passed'));
 	assert.equal(report.executions.find((execution) => execution.nodeType === 'n8n-nodes-base.stopAndError')?.observedStatus, 'failed');
 	assert.equal(report.executions.find((execution) => execution.nodeType === 'n8n-nodes-base.merge')?.status, 'passed');

@@ -35,8 +35,10 @@ async function start() {
 			return credential ? vault.open(credential.encryptedValue) : null;
 		},
 	});
+	console.log('Preparing pinned official n8n runtime packages in persistent storage; the first start may take several minutes');
 	const n8nPackageInstall = await ensureN8nPackages(config.n8nPackagesDir, {
 		seedArchivePath: join(process.cwd(), 'vendor', 'n8n-runtime.tar.br'),
+		lockfilePath: join(process.cwd(), 'vendor', 'n8n-package-lock.json'),
 	});
 	console.log(`Official n8n runtime packages ${n8nPackageInstall.installed ? 'installed' : 'available'} (${n8nPackageInstall.packages.join(', ')})`);
 	const n8nNodeRuntime = new N8nNodePackageRuntime(config.n8nPackagesDir);

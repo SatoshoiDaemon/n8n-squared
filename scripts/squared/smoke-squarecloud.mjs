@@ -8,7 +8,16 @@ import { pathToFileURL } from 'node:url';
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
 const archive = join(output, 'squared-squarecloud.zip');
+const startupTimeoutMs = 30 * 60 * 1000;
 const packageMetadata = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8'));
+const expectedN8nPackages = packageMetadata.n8nRuntime?.packages;
+if (
+	!expectedN8nPackages ||
+	packageMetadata.n8nRuntime.installMode !== 'npm ci on first start into persistent application storage' ||
+	packageMetadata.n8nRuntime.lockfile !== 'vendor/n8n-package-lock.json'
+) {
+	throw new Error('Square Cloud package does not declare persistent npm installation for the official n8n packages');
+}
 const temporaryRoot = join(root, '.tmp');
 mkdirSync(temporaryRoot, { recursive: true });
 const temporary = mkdtempSync(join(temporaryRoot, 'squared-smoke-'));
@@ -78,7 +87,7 @@ async function startBackend(port) {
 }
 
 async function waitForReady(base, label) {
-	const deadline = Date.now() + 600_000;
+	const deadline = Date.now() + startupTimeoutMs;
 	while (Date.now() < deadline) {
 		if (backend.exitCode !== null) throw new Error(`Packed runtime exited during ${label} (exit ${backend.exitCode})`);
 		try {
@@ -90,7 +99,7 @@ async function waitForReady(base, label) {
 		await new Promise((done) => setTimeout(done, 500));
 	}
 	const diagnostics = startupMessages.length ? `; startup logs: ${startupMessages.slice(-10).join(' | ')}` : '';
-	throw new Error(`Packed runtime did not become ready during ${label} within 600 seconds${diagnostics}`);
+	throw new Error(`Packed runtime did not become ready during ${label} within ${startupTimeoutMs / 60_000} minutes${diagnostics}`);
 }
 
 async function stopBackend() {
@@ -137,21 +146,20 @@ const base = await startBackend(port);
 
 try {
 	await waitForReady(base, 'first start');
-	const installedN8nBase = JSON.parse(readFileSync(join(dataDir, 'n8n-nodes', 'node_modules', 'n8n-nodes-base', 'package.json'), 'utf8'));
-	if (installedN8nBase.version !== '2.42.5') throw new Error('The packaged n8n runtime seed was not installed into persistent storage');
-	const persistedLicenses = readFileSync(join(dataDir, 'n8n-nodes', 'THIRD_PARTY_LICENSES.txt'));
-	if (
-		persistedLicenses.length !== packageMetadata.n8nRuntime.licenseBundle.bytes ||
-		createHash('sha256').update(persistedLicenses).digest('hex') !== packageMetadata.n8nRuntime.licenseBundle.sha256
-	) {
-		throw new Error('The n8n seed did not preserve its third-party license and notice bundle');
+	assertInstalledN8nPackages('first start');
+	const persistentLockfile = readFileSync(join(dataDir, 'n8n-nodes', 'package-lock.json'));
+	if (createHash('sha256').update(persistentLockfile).digest('hex') !== packageMetadata.n8nRuntime.lockfileSha256) {
+		throw new Error('The published n8n runtime lockfile did not persist with the official packages');
 	}
-	if (existsSync(join(app, 'vendor', 'n8n-runtime.tar.br'))) throw new Error('The deployed n8n runtime seed was not removed after installation');
+	if (!startupMessages.some((line) => line.startsWith('Official n8n runtime packages installed'))) {
+		throw new Error('The first start did not install pinned n8n packages into persistent storage');
+	}
+	if (existsSync(join(app, 'vendor', 'n8n-runtime.tar.br'))) throw new Error('The ZIP unexpectedly bundles an n8n runtime seed');
 	const editor = await fetch(base);
 	if (!editor.ok || !(await editor.text()).includes('<title>Squared</title>')) throw new Error('Editor was not served by the packed runtime');
 	const setupState = await api(base, null, '/api/auth/status').then((response) => response.json());
 	if (!setupState.setupRequired || setupState.authenticated) throw new Error('First-boot state was not reported by the packed runtime');
-	if ((await api(base, null, '/api/workflows')).status !== 401) throw new Error('Workflow API accepted a request without authentication');
+	await assertUnauthorized(base, 'Workflow API accepted a request without authentication');
 
 	const bootstrapCode = readFileSync(join(dataDir, 'bootstrap-code'), 'utf8');
 	const bootstrap = await api(base, null, '/api/auth/bootstrap', {
@@ -264,6 +272,10 @@ try {
 
 	const restartBase = await startBackend(port);
 	await waitForReady(restartBase, 'restart');
+	assertInstalledN8nPackages('restart');
+	if (!startupMessages.some((line) => line.startsWith('Official n8n runtime packages available'))) {
+		throw new Error('The restart did not reuse the pinned n8n package installation');
+	}
 	const keyAfterRestart = readFileSync(join(dataDir, 'encryption-key'));
 	if (!encryptionKeyBeforeRestart.equals(keyAfterRestart)) throw new Error('Encryption key changed after restart');
 	const authenticatedAfterRestart = await api(restartBase, cookie, '/api/auth/status').then((response) => response.json());
@@ -276,23 +288,36 @@ try {
 	if (persistedN8nWorkflow.name !== n8nWorkflow.name) throw new Error('The imported n8n workflow did not survive restart');
 	const persistedN8nExecution = await api(restartBase, cookie, `/api/executions/${n8nExecutionId}`).then((response) => response.json());
 	if (persistedN8nExecution.status !== 'succeeded') throw new Error('The published n8n node execution history did not survive restart');
-	const n8nPackagesAfterRestart = JSON.parse(readFileSync(join(dataDir, 'n8n-nodes', 'node_modules', 'n8n-nodes-base', 'package.json'), 'utf8'));
-	if (n8nPackagesAfterRestart.version !== '2.42.5') throw new Error('The published n8n runtime package did not survive restart');
-	if (
-		createHash('sha256').update(readFileSync(join(dataDir, 'n8n-nodes', 'THIRD_PARTY_LICENSES.txt'))).digest('hex') !== packageMetadata.n8nRuntime.licenseBundle.sha256
-	) {
-		throw new Error('The n8n third-party license bundle did not survive restart');
-	}
 	const logout = await api(restartBase, cookie, '/api/auth/logout', { method: 'POST' });
 	if (logout.status !== 204) throw new Error('Admin logout failed after restart');
-	if ((await api(restartBase, null, '/api/workflows')).status !== 401) throw new Error('Logged-out API accepted a request');
+	await assertUnauthorized(restartBase, 'Logged-out API accepted a request');
 
-	console.log('Squared ZIP smoke passed: bundled n8n seed installation, license bundle and persistence, published n8n Set execution, protected first-admin setup, session login/logout, SQLite workflow and execution persistence across restart, credential encryption/key reuse, manual execution and webhook.');
+	console.log('Squared ZIP smoke passed: pinned n8n npm installation into persistent storage, official package license retention and reuse after restart, published n8n Set and Code execution, protected first-admin setup, session login/logout, SQLite workflow and execution persistence, credential encryption/key reuse, manual execution and webhook.');
 	smokeSucceeded = true;
 } finally {
 	await stopBackend();
 	rmSync(temporary, { recursive: true, force: true });
 	if (smokeSucceeded && persistentDataOverride) rmSync(dataDir, { recursive: true, force: true });
+}
+
+function assertInstalledN8nPackages(phase) {
+	const packagesDirectory = join(dataDir, 'n8n-nodes', 'node_modules');
+	for (const [name, version] of Object.entries(expectedN8nPackages)) {
+		const manifest = JSON.parse(readFileSync(join(packagesDirectory, ...name.split('/'), 'package.json'), 'utf8'));
+		if (manifest.version !== version) throw new Error(`The published ${name}@${version} package is missing or changed after ${phase}`);
+	}
+	for (const packageName of ['n8n-nodes-base', '@n8n/n8n-nodes-langchain']) {
+		const packageDirectory = join(packagesDirectory, ...packageName.split('/'));
+		const hasLicense = ['LICENSE', 'LICENSE.md', 'LICENSE.txt'].some((name) => existsSync(join(packageDirectory, name)));
+		if (!hasLicense) throw new Error(`The published ${packageName} license file is missing after ${phase}`);
+	}
+}
+
+async function assertUnauthorized(baseUrl, errorMessage) {
+	const response = await api(baseUrl, null, '/api/workflows');
+	const unauthorized = response.status === 401;
+	await response.body?.cancel();
+	if (!unauthorized) throw new Error(errorMessage);
 }
 
 async function waitForExecution(baseUrl, sessionCookie, executionId) {

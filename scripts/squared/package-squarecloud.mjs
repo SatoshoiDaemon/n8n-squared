@@ -1,11 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { once } from 'node:events';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
 	chmodSync,
 	copyFileSync,
 	cpSync,
-	createWriteStream,
 	existsSync,
 	lstatSync,
 	lutimesSync,
@@ -18,8 +16,6 @@ import {
 	writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import { constants as zlibConstants, createBrotliCompress } from 'node:zlib';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
@@ -54,7 +50,7 @@ const runtimePackage = {
 };
 const displayName = process.env.SQUARED_DISPLAY_NAME || 'Squared';
 if (/[\r\n=]/.test(displayName)) throw new Error('Invalid SQUARED_DISPLAY_NAME');
-const memory = process.env.SQUARED_MEMORY_MB || '1024';
+const memory = process.env.SQUARED_MEMORY_MB || '3072';
 if (!/^\d+$/.test(memory) || Number(memory) < 512) {
 	throw new Error('SQUARED_MEMORY_MB must be an integer of at least 512');
 }
@@ -87,6 +83,9 @@ writeFileSync(
 
 const n8nPackagesDirectory = resolve(process.env.SQUARED_N8N_PACKAGES_DIR || join(root, 'squared-data', 'n8n-nodes', 'node_modules'));
 const n8nInstallPrefix = dirname(n8nPackagesDirectory);
+const n8nRuntimeLockPath = join(n8nInstallPrefix, 'package-lock.json');
+if (!existsSync(n8nRuntimeLockPath)) throw new Error('Missing n8n runtime package-lock.json; run npm run n8n:install first');
+const n8nRuntimeLock = JSON.parse(readFileSync(n8nRuntimeLockPath, 'utf8'));
 const n8nPackageVersions = {
 	'n8n-nodes-base': '2.42.5',
 	'@n8n/n8n-nodes-langchain': '2.42.5',
@@ -99,71 +98,14 @@ for (const [name, version] of Object.entries(n8nPackageVersions)) {
 	if (!existsSync(packageManifestPath)) throw new Error(`Missing installed n8n runtime package ${name}; run npm run n8n:install first`);
 	const installed = JSON.parse(readFileSync(packageManifestPath, 'utf8'));
 	if (installed.version !== version) throw new Error(`Expected ${name}@${version}, found ${installed.version || 'unknown'}`);
-}
-const seedDirectory = join(app, 'vendor');
-mkdirSync(seedDirectory, { recursive: true });
-const n8nRuntimeSeed = join(seedDirectory, 'n8n-runtime.tar.br');
-const seedEntries = ['package.json', 'node_modules'];
-const seedCacheDirectory = join(root, 'dist', 'n8n-runtime-seed');
-const seedCacheArchive = `${seedCacheDirectory}.tar.br`;
-const seedCacheManifest = `${seedCacheDirectory}.json`;
-const licenseCacheArchive = join(root, 'dist', 'n8n-runtime-third-party-licenses.txt');
-const licenseCacheManifest = join(root, 'dist', 'n8n-runtime-third-party-licenses.json');
-const licenseCacheKey = createHash('sha256')
-	.update('third-party-license-bundle-v1')
-	.update(JSON.stringify(n8nPackageVersions))
-	.update(readFileSync(join(n8nInstallPrefix, 'package.json')))
-	.update(existsSync(join(n8nInstallPrefix, 'package-lock.json')) ? readFileSync(join(n8nInstallPrefix, 'package-lock.json')) : '')
-	.digest('hex');
-const seedCacheKey = createHash('sha256')
-	.update('brotli-text-quality-11-window-24-runtime-files-v5-license-bundle-no-ts-source')
-	.update(JSON.stringify(n8nPackageVersions))
-	.update(readFileSync(join(n8nInstallPrefix, 'package.json')))
-	.update(existsSync(join(n8nInstallPrefix, 'package-lock.json')) ? readFileSync(join(n8nInstallPrefix, 'package-lock.json')) : '')
-	.digest('hex');
-let n8nRuntimeSeedSha256;
-let licenseBundle;
-let cachedSeed;
-try {
-	cachedSeed = JSON.parse(readFileSync(seedCacheManifest, 'utf8'));
-} catch {
-	// Build the seed from the installed package tree when no complete cache exists.
-}
-if (cachedSeed?.key === seedCacheKey && cachedSeed.licenseBundle && existsSync(seedCacheArchive)) {
-	const cachedHash = createHash('sha256').update(readFileSync(seedCacheArchive)).digest('hex');
-	if (cachedHash === cachedSeed.sha256) {
-		copyFileSync(seedCacheArchive, n8nRuntimeSeed);
-		n8nRuntimeSeedSha256 = cachedHash;
-		licenseBundle = cachedSeed.licenseBundle;
+	if (n8nRuntimeLock.packages?.[`node_modules/${name}`]?.version !== version) {
+		throw new Error(`n8n runtime package-lock.json does not pin ${name}@${version}`);
 	}
 }
-if (!n8nRuntimeSeedSha256) {
-	const licensePath = join(seedDirectory, 'THIRD_PARTY_LICENSES.txt');
-	let cachedLicenses;
-	try {
-		cachedLicenses = JSON.parse(readFileSync(licenseCacheManifest, 'utf8'));
-	} catch {
-		// Regenerate the license bundle when no complete cache exists.
-	}
-	if (cachedLicenses?.key === licenseCacheKey && existsSync(licenseCacheArchive)) {
-		const cachedLicenseHash = createHash('sha256').update(readFileSync(licenseCacheArchive)).digest('hex');
-		if (cachedLicenseHash === cachedLicenses.licenseBundle?.sha256) {
-			copyFileSync(licenseCacheArchive, licensePath);
-			licenseBundle = cachedLicenses.licenseBundle;
-		}
-	}
-	if (!licenseBundle) {
-		licenseBundle = createThirdPartyLicenseBundle(n8nPackagesDirectory, licensePath);
-		copyFileSync(licensePath, licenseCacheArchive);
-		writeFileSync(licenseCacheManifest, `${JSON.stringify({ key: licenseCacheKey, licenseBundle }, null, 2)}\n`);
-	}
-	await createBrotliTarSeed(n8nInstallPrefix, n8nRuntimeSeed, seedEntries, seedDirectory);
-	rmSync(join(seedDirectory, 'THIRD_PARTY_LICENSES.txt'), { force: true });
-	n8nRuntimeSeedSha256 = createHash('sha256').update(readFileSync(n8nRuntimeSeed)).digest('hex');
-	mkdirSync(join(root, 'dist'), { recursive: true });
-	copyFileSync(n8nRuntimeSeed, seedCacheArchive);
-	writeFileSync(seedCacheManifest, `${JSON.stringify({ key: seedCacheKey, sha256: n8nRuntimeSeedSha256, licenseBundle }, null, 2)}\n`);
-}
+const n8nRuntimeLockCopy = 'vendor/n8n-package-lock.json';
+mkdirSync(join(app, 'vendor'), { recursive: true });
+copyFileSync(n8nRuntimeLockPath, join(app, n8nRuntimeLockCopy));
+const n8nRuntimeLockSha256 = createHash('sha256').update(readFileSync(n8nRuntimeLockPath)).digest('hex');
 
 // The deploy ZIP is a conventional Node app. It has no workspace install or build step.
 run('npm', ['ci', '--omit=dev', '--ignore-scripts'], app);
@@ -190,13 +132,15 @@ const manifest = {
 	startCommand: 'npm start',
 	buildRequired: false,
 	workspacePackages: 0,
+	memoryMb: Number(memory),
 	dependencies: product.dependencies,
 	n8nRuntime: {
 		packages: n8nPackageVersions,
-		seedArchive: 'vendor/n8n-runtime.tar.br',
-		seedBytes: statSync(n8nRuntimeSeed).size,
-		seedSha256: n8nRuntimeSeedSha256,
-		licenseBundle,
+		installMode: 'npm ci on first start into persistent application storage',
+		persistentDirectory: 'n8n-nodes/node_modules',
+		lockfile: n8nRuntimeLockCopy,
+		lockfileSha256: n8nRuntimeLockSha256,
+		publishedPackageLicenses: 'retained in the installed official npm packages',
 	},
 	historicalSource: 'n8n source snapshot; see UPSTREAM.md',
 };
@@ -208,73 +152,6 @@ function removeTests(directory) {
 		const entry = join(directory, name);
 		if (statSync(entry).isDirectory()) removeTests(entry);
 		else if (/\.(test|spec)\.js$/.test(name)) rmSync(entry);
-	}
-}
-
-function createThirdPartyLicenseBundle(nodeModulesDirectory, target) {
-	const sections = ['Third-party license and notice files bundled with the official n8n runtime packages.\n'];
-	const licensePattern = /^(?:license|licence|copying|notice|copyright)(?:[._-].*)?$/i;
-	let files = 0;
-	function visit(directory) {
-		for (const name of readdirSync(directory).sort()) {
-			const path = join(directory, name);
-			const entry = lstatSync(path);
-			if (entry.isSymbolicLink()) continue;
-			if (entry.isDirectory()) visit(path);
-			else if (licensePattern.test(name)) {
-				const relative = path.slice(nodeModulesDirectory.length + 1).split(sep).join('/');
-				sections.push(`\n\n===== ${relative} =====\n\n`);
-				sections.push(readFileSync(path));
-				files += 1;
-			}
-		}
-	}
-	visit(nodeModulesDirectory);
-	const contents = Buffer.concat(sections.map((section) => Buffer.isBuffer(section) ? section : Buffer.from(section)));
-	writeFileSync(target, contents);
-	return {
-		file: 'THIRD_PARTY_LICENSES.txt',
-		files,
-		bytes: contents.length,
-		sha256: createHash('sha256').update(contents).digest('hex'),
-	};
-}
-
-async function createBrotliTarSeed(sourceDirectory, target, entries, licenseBundleDirectory) {
-	const args = [
-		'-c', '-f', '-',
-		'--exclude=*.map', '--exclude=*.d.ts', '--exclude=*.test.js', '--exclude=*.spec.js', '--exclude=*.test.ts', '--exclude=*.spec.ts',
-		'--exclude=README*', '--exclude=readme*', '--exclude=CHANGELOG*', '--exclude=CHANGES*', '--exclude=*.mdx',
-		'--exclude=*.md', '--exclude=*.MD', '--exclude=*.markdown', '--exclude=*.MARKDOWN', '--exclude=*.rst', '--exclude=*.RST',
-		'--exclude=*.ts', '--exclude=*.tsx', '--exclude=*.cts', '--exclude=*.mts', '--exclude=*.d.cts', '--exclude=*.d.mts',
-		'--exclude=docs', '--exclude=examples', '--exclude=example', '--exclude=test', '--exclude=tests', '--exclude=__tests__', '--exclude=coverage',
-		'-C', sourceDirectory,
-		...entries,
-		'-C', licenseBundleDirectory, 'THIRD_PARTY_LICENSES.txt',
-	];
-	const child = spawn('tar', args, {
-		cwd: sourceDirectory,
-		stdio: ['ignore', 'pipe', 'inherit'],
-		windowsHide: true,
-	});
-	const closed = once(child, 'close');
-	try {
-		await pipeline(
-			child.stdout,
-		createBrotliCompress({
-			params: {
-				[zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
-				[zlibConstants.BROTLI_PARAM_QUALITY]: 11,
-				[zlibConstants.BROTLI_PARAM_LGWIN]: 24,
-			},
-		}),
-			createWriteStream(target),
-		);
-		const [code] = await closed;
-		if (code !== 0) throw new Error(`tar exited with ${code ?? 'unknown status'}`);
-	} catch (error) {
-		child.kill();
-		throw error instanceof Error ? error : new Error('Could not create the packaged n8n runtime seed');
 	}
 }
 

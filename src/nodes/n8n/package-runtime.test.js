@@ -11,8 +11,9 @@ const packagesDirectory = process.env.SQUARED_N8N_PACKAGES_DIR;
 test('loads and executes real versioned n8n-nodes-base modules', { skip: !packagesDirectory }, async () => {
 	const report = await runN8nBaseCompatibilityProbe(packagesDirectory);
 	assert.ok(report.nodesDiscovered >= 400);
-	assert.equal(report.executions.length, 23);
+	assert.equal(report.executions.length, 28);
 	assert.ok(report.executions.every((execution) => execution.status === 'passed'));
+	assert.equal(report.executions.find((execution) => execution.nodeType === 'n8n-nodes-base.stopAndError')?.observedStatus, 'failed');
 	assert.equal(report.credentials.find((credential) => credential.credentialType === 'httpHeaderAuth')?.loaded, true);
 	assert.equal(report.credentials.find((credential) => credential.credentialType === 'httpHeaderAuth')?.configurable, true);
 	assert.equal(report.credentials.find((credential) => credential.credentialType === 'githubApi')?.loaded, true);
@@ -20,8 +21,9 @@ test('loads and executes real versioned n8n-nodes-base modules', { skip: !packag
 		'n8n-nodes-base.set', 'n8n-nodes-base.if', 'n8n-nodes-base.filter', 'n8n-nodes-base.switch',
 		'n8n-nodes-base.noOp', 'n8n-nodes-base.httpRequest', 'n8n-nodes-base.limit', 'n8n-nodes-base.sort',
 		'n8n-nodes-base.removeDuplicates', 'n8n-nodes-base.renameKeys', 'n8n-nodes-base.splitOut',
-		'n8n-nodes-base.aggregate', 'n8n-nodes-base.dateTime', 'n8n-nodes-base.summarize',
-		'n8n-nodes-base.compareDatasets', 'n8n-nodes-base.moveBinaryData', 'n8n-nodes-base.github',
+		'n8n-nodes-base.itemLists', 'n8n-nodes-base.aggregate', 'n8n-nodes-base.dateTime', 'n8n-nodes-base.crypto',
+		'n8n-nodes-base.summarize', 'n8n-nodes-base.compareDatasets', 'n8n-nodes-base.moveBinaryData',
+		'n8n-nodes-base.convertToFile', 'n8n-nodes-base.spreadsheetFile', 'n8n-nodes-base.stopAndError', 'n8n-nodes-base.github',
 		'n8n-nodes-base.xml', 'n8n-nodes-base.html', 'n8n-nodes-base.markdown',
 	]) {
 		assert.equal(report.nodes.find((node) => node.nodeType === type)?.compatibility.validated, true, `${type} should carry validation evidence`);

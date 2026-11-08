@@ -31,6 +31,13 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		runtime.catalog.markValidated(nodeType, typeVersion, test);
 		executions.push({ nodeType, typeVersion, test, status: 'passed', output: result.output, outputsByNode: result.outputsByNode, nodeRuns: result.nodeRuns });
 	};
+	const executeExpectedError = async (test, nodeType, typeVersion, workflow, input, expectedMessage) => {
+		const result = await engine.execute(workflow, { input });
+		assert.equal(result.status, 'failed', 'The original node should fail this deterministic fixture');
+		assert.match(String(result.error), new RegExp(expectedMessage));
+		runtime.catalog.markValidated(nodeType, typeVersion, test);
+		executions.push({ nodeType, typeVersion, test, status: 'passed', observedStatus: result.status, error: String(result.error), nodeRuns: result.nodeRuns });
+	};
 
 	await execute('Set v3.5 expression and keep input fields', 'n8n-nodes-base.set', 3.5, {
 		name: 'Published Set v3.5',
@@ -136,11 +143,46 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		connections: { Manual: { main: [[{ node: 'Aggregate', type: 'main', index: 0 }]] } },
 	}, [{ json: { value: 1, group: 'a' } }, { json: { value: 2, group: 'b' } }], { output: [{ value: [1, 2] }] });
 
+	await execute('Item Lists v3.1 executes the published splitOutItems operation', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1',
+		nodes: [manual, { id: 'item-lists', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: { resource: 'itemList', operation: 'splitOutItems', fieldToSplitOut: 'values', include: 'allOtherFields', options: {} } }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, { values: ['a', 'b'], keep: 7 }, { output: [{ keep: 7, values: 'a' }, { keep: 7, values: 'b' }] });
+
 	await execute('Date & Time v2 formats a fixed date deterministically', 'n8n-nodes-base.dateTime', 2, {
 		name: 'Published Date & Time v2',
 		nodes: [manual, { id: 'date-time', name: 'Date & Time', type: 'n8n-nodes-base.dateTime', typeVersion: 2, parameters: { operation: 'formatDate', date: '2024-01-02T03:04:05.000Z', format: 'yyyy-MM-dd', outputFieldName: 'formattedDate', options: { includeInputFields: true } } }],
 		connections: { Manual: { main: [[{ node: 'Date & Time', type: 'main', index: 0 }]] } },
 	}, { tag: 'fixed' }, { output: [{ tag: 'fixed', formattedDate: '2024-01-02' }] });
+
+	await execute('Crypto v2 hashes a fixed string with SHA-256', 'n8n-nodes-base.crypto', 2, {
+		name: 'Published Crypto v2 SHA-256',
+		nodes: [manual, { id: 'crypto', name: 'Crypto', type: 'n8n-nodes-base.crypto', typeVersion: 2, parameters: { action: 'hash', binaryData: false, value: 'hello', type: 'SHA256', encoding: 'hex', dataPropertyName: 'sha256' } }],
+		connections: { Manual: { main: [[{ node: 'Crypto', type: 'main', index: 0 }]] } },
+	}, { source: 'fixture' }, { output: [{ source: 'fixture', sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824' }] });
+
+	await execute('Convert to File v1.1 encodes a JSON string into real binary data', 'n8n-nodes-base.convertToFile', 1.1, {
+		name: 'Published Convert to File v1.1',
+		nodes: [manual, { id: 'convert-file', name: 'Convert to File', type: 'n8n-nodes-base.convertToFile', typeVersion: 1.1, parameters: { operation: 'toText', sourceProperty: 'content', binaryPropertyName: 'file', options: { fileName: 'hello.txt', encoding: 'utf8' } } }],
+		connections: { Manual: { main: [[{ node: 'Convert to File', type: 'main', index: 0 }]] } },
+	}, { content: 'Hello' }, {
+		output: [{}],
+		binary: [{ file: { data: 'SGVsbG8=', fileName: 'hello.txt', fileExtension: 'txt', fileSize: '5 B', mimeType: 'text/plain', fileType: 'text' } }],
+	});
+
+	await execute('Spreadsheet File v2 reads deterministic CSV binary data into JSON items', 'n8n-nodes-base.spreadsheetFile', 2, {
+		name: 'Published Spreadsheet File v2 CSV import',
+		nodes: [manual, { id: 'spreadsheet', name: 'Spreadsheet File', type: 'n8n-nodes-base.spreadsheetFile', typeVersion: 2, parameters: { operation: 'fromFile', binaryPropertyName: 'data', fileFormat: 'csv', options: { headerRow: true } } }],
+		connections: { Manual: { main: [[{ node: 'Spreadsheet File', type: 'main', index: 0 }]] } },
+	}, { json: {}, binary: { data: { data: Buffer.from('name,age\nAda,37\nGrace,85\n').toString('base64'), fileName: 'people.csv', fileExtension: 'csv', mimeType: 'text/csv' } } }, {
+		output: [{ name: 'Ada', age: '37' }, { name: 'Grace', age: '85' }],
+	});
+
+	await executeExpectedError('Stop and Error v1 propagates its configured workflow error', 'n8n-nodes-base.stopAndError', 1, {
+		name: 'Published Stop and Error v1',
+		nodes: [manual, { id: 'stop', name: 'Stop and Error', type: 'n8n-nodes-base.stopAndError', typeVersion: 1, parameters: { errorType: 'errorMessage', errorMessage: 'intentional fixture error' } }],
+		connections: { Manual: { main: [[{ node: 'Stop and Error', type: 'main', index: 0 }]] } },
+	}, { source: 'fixture' }, 'intentional fixture error');
 
 	await execute('Summarize v1.1 aggregates numeric input fields', 'n8n-nodes-base.summarize', 1.1, {
 		name: 'Published Summarize v1.1',

@@ -119,10 +119,12 @@ export class N8nNodePackageRuntime {
 				}
 				const accessed = new Set<string>();
 				const facade = createExecutionFacade(context, loaded.require, selected.description ?? loaded.description, accessed, loaded.runtime);
-				const output = await selected.execute.call(facade);
-				const contracts = ['INodeType', 'IExecuteFunctions', 'INodeExecutionData', ...[...accessed].map((method) => `IExecuteFunctions.${method}`)];
-				loaded.runtime.catalog.markRuntimeLoaded(record.nodeType, selected.description ?? loaded.description, 'execute', contracts, true, loaded.versions);
-				return output as NodeExecutionData[][];
+				try {
+					return await selected.execute.call(facade) as NodeExecutionData[][];
+				} finally {
+					const contracts = ['INodeType', 'IExecuteFunctions', 'INodeExecutionData', ...[...accessed].map((method) => `IExecuteFunctions.${method}`)];
+					loaded.runtime.catalog.markRuntimeLoaded(record.nodeType, selected.description ?? loaded.description, 'execute', contracts, true, loaded.versions);
+				}
 			},
 		};
 	}

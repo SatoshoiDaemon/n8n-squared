@@ -3,7 +3,7 @@
   "packageVersion": "2.42.5",
   "packageSource": "installed npm package loaded from SQUARED_N8N_PACKAGES_DIR",
   "nodesDiscovered": 444,
-  "deterministicExecutions": 23,
+  "deterministicExecutions": 28,
   "differentialAgainstN8n": false,
   "nodes": [
     {
@@ -44,6 +44,37 @@
     {
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.crypto",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Crypto v2 hashes a fixed string with SHA-256",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
       "node": "n8n-nodes-base.dateTime",
       "version": [
         1,
@@ -68,6 +99,39 @@
         {
           "typeVersion": 2,
           "test": "Date & Time v2 formats a fixed date deterministically",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.convertToFile",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.prepareBinaryData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Convert to File v1.1 encodes a JSON string into real binary data",
           "status": "passed"
         }
       ],
@@ -263,6 +327,41 @@
     {
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.itemLists",
+      "version": [
+        1,
+        2,
+        2.1,
+        2.2,
+        3,
+        3.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 executes the published splitOutItems operation",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
       "node": "n8n-nodes-base.markdown",
       "version": [
         1
@@ -427,6 +526,69 @@
         {
           "typeVersion": 1,
           "test": "Set v1 expression and keep input fields",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.spreadsheetFile",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Spreadsheet File v2 reads deterministic CSV binary data into JSON items",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.stopAndError",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Stop and Error v1 propagates its configured workflow error",
           "status": "passed"
         }
       ],

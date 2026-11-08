@@ -19,11 +19,11 @@ Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.m
 | Estado | Cobertura |
 | --- | ---: |
 | discovered | 569 / 569 |
-| loaded | 20 / 569 |
-| configurable | 20 / 569 |
-| executable | 20 / 569 |
-| validated | 20 / 569 |
+| loaded | 25 / 569 |
+| configurable | 25 / 569 |
+| executable | 25 / 569 |
+| validated | 25 / 569 |
 
 O JSON ao lado registra cada node dos manifests com tipo de execução, versão, dependências detectadas, interfaces, licença e evidência por teste. Nodes com status executável foram carregados do pacote publicado e executaram seu próprio método; nomes e metadados sem uma execução aprovada permanecem como descobertos.
 
-A validação local executou 23 casos determinísticos usando n8n-nodes-base@2.42.5, marcou 20 tipos como validados e carregou 2 schemas de credencial. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.
+A validação local executou 28 casos determinísticos usando n8n-nodes-base@2.42.5, marcou 25 tipos como validados e carregou 2 schemas de credencial. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.

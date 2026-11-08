@@ -225,8 +225,8 @@
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
       "nodesDiscovered": 444,
-      "deterministicExecutions": 23,
-      "nodesValidated": 20,
+      "deterministicExecutions": 28,
+      "nodesValidated": 25,
       "credentialSchemasLoaded": 2,
       "credentialSchemasConfigurable": 2,
       "differentialAgainstN8n": false,
@@ -235,12 +235,12 @@
     "nodeCount": 569,
     "stageCounts": {
       "discovered": 569,
-      "loaded": 20,
-      "configurable": 20,
-      "executable": 20,
-      "validated": 20
+      "loaded": 25,
+      "configurable": 25,
+      "executable": 25,
+      "validated": 25
     },
-    "fullyValidatedNodes": 20,
+    "fullyValidatedNodes": 25,
     "knownLimitations": [
       "Only nodes with a recorded successful execution are marked executable; untested package entries remain explicitly incomplete.",
       "Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.",
@@ -8373,21 +8373,35 @@
       ],
       "interfacesUsed": [
         "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.prepareBinaryData",
         "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription"
       ],
       "compatibility": {
         "discovered": true,
-        "loaded": false,
-        "configurable": false,
-        "executable": false,
-        "validated": false
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
       },
       "knownFailures": [
-        "The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.",
-        "No successful execution has yet exercised this node version against Squared contracts.",
         "No differential execution result against an authenticated n8n reference instance is available."
+      ],
+      "runtimePackageVersion": "2.42.5",
+      "runtimeVersion": [
+        1,
+        1.1
+      ],
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Convert to File v1.1 encodes a JSON string into real binary data",
+          "status": "passed"
+        }
       ]
     },
     {
@@ -8602,19 +8616,34 @@
         "n8n-workflow"
       ],
       "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType",
         "INodeTypeBaseDescription"
       ],
       "compatibility": {
         "discovered": true,
-        "loaded": false,
-        "configurable": false,
-        "executable": false,
-        "validated": false
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
       },
       "knownFailures": [
-        "The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.",
-        "No successful execution has yet exercised this node version against Squared contracts.",
         "No differential execution result against an authenticated n8n reference instance is available."
+      ],
+      "runtimePackageVersion": "2.42.5",
+      "runtimeVersion": [
+        1,
+        2
+      ],
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Crypto v2 hashes a fixed string with SHA-256",
+          "status": "passed"
+        }
       ]
     },
     {
@@ -13304,19 +13333,38 @@
         "n8n-workflow"
       ],
       "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType",
         "INodeTypeBaseDescription"
       ],
       "compatibility": {
         "discovered": true,
-        "loaded": false,
-        "configurable": false,
-        "executable": false,
-        "validated": false
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
       },
       "knownFailures": [
-        "The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.",
-        "No successful execution has yet exercised this node version against Squared contracts.",
         "No differential execution result against an authenticated n8n reference instance is available."
+      ],
+      "runtimePackageVersion": "2.42.5",
+      "runtimeVersion": [
+        1,
+        2,
+        2.1,
+        2.2,
+        3,
+        3.1
+      ],
+      "validationEvidence": [
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 executes the published splitOutItems operation",
+          "status": "passed"
+        }
       ]
     },
     {
@@ -19802,19 +19850,36 @@
         "n8n-workflow"
       ],
       "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "INodeExecutionData",
+        "INodeType",
         "INodeTypeBaseDescription"
       ],
       "compatibility": {
         "discovered": true,
-        "loaded": false,
-        "configurable": false,
-        "executable": false,
-        "validated": false
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
       },
       "knownFailures": [
-        "The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.",
-        "No successful execution has yet exercised this node version against Squared contracts.",
         "No differential execution result against an authenticated n8n reference instance is available."
+      ],
+      "runtimePackageVersion": "2.42.5",
+      "runtimeVersion": [
+        1,
+        2
+      ],
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Spreadsheet File v2 reads deterministic CSV binary data into JSON items",
+          "status": "passed"
+        }
       ]
     },
     {
@@ -19989,21 +20054,32 @@
       ],
       "interfacesUsed": [
         "IExecuteFunctions",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
         "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription"
       ],
       "compatibility": {
         "discovered": true,
-        "loaded": false,
-        "configurable": false,
-        "executable": false,
-        "validated": false
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
       },
       "knownFailures": [
-        "The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.",
-        "No successful execution has yet exercised this node version against Squared contracts.",
         "No differential execution result against an authenticated n8n reference instance is available."
+      ],
+      "runtimePackageVersion": "2.42.5",
+      "runtimeVersion": [
+        1
+      ],
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Stop and Error v1 propagates its configured workflow error",
+          "status": "passed"
+        }
       ]
     },
     {

@@ -59,6 +59,14 @@ export function createHttpServer({ config, store, workflows, vault, auth }) {
 				const body = await readJson(request, config.maxRequestBytes);
 				return sendJson(response, 201, await workflows.save(body));
 			}
+			if (request.method === 'POST' && url.pathname === '/api/workflows/import') {
+				const body = await readJson(request, config.maxRequestBytes);
+				return sendJson(response, 201, await workflows.importN8nWorkflow(body));
+			}
+			const workflowExportMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)\/export$/);
+			if (workflowExportMatch && request.method === 'GET') {
+				return sendJson(response, 200, await workflows.exportN8nWorkflow(decodeURIComponent(workflowExportMatch[1])));
+			}
 			const workflowMatch = url.pathname.match(/^\/api\/workflows\/([^/]+)$/);
 			if (workflowMatch && request.method === 'GET') {
 				return sendJson(response, 200, await workflows.get(decodeURIComponent(workflowMatch[1])));

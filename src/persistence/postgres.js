@@ -45,6 +45,11 @@ export class PostgresStore {
 		return rows[0] ? workflowRow(rows[0]) : null;
 	}
 
+	async getWorkflowDefinition(id) {
+		const { rows } = await this.pool.query('SELECT definition FROM squared_workflows WHERE id = $1', [id]);
+		return rows[0]?.definition ?? null;
+	}
+
 	async saveWorkflow(workflow) {
 		const { rows } = await this.pool.query(
 			`INSERT INTO squared_workflows (id, name, active, definition)
@@ -53,6 +58,16 @@ export class PostgresStore {
 			 definition = EXCLUDED.definition, updated_at = now()
 			 RETURNING id, name, active, definition, created_at, updated_at`,
 			[workflow.id, workflow.name, workflow.active, JSON.stringify(workflow)],
+		);
+		return workflowRow(rows[0]);
+	}
+
+	async createWorkflow(workflow) {
+		const { rows } = await this.pool.query(
+			`INSERT INTO squared_workflows (id, name, active, definition)
+			 VALUES ($1, $2, $3, $4::jsonb)
+			 RETURNING id, name, active, definition, created_at, updated_at`,
+			[workflow.id, workflow.name, Boolean(workflow.active), JSON.stringify(workflow)],
 		);
 		return workflowRow(rows[0]);
 	}

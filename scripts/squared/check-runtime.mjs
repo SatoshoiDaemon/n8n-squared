@@ -4,12 +4,13 @@ import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
 const directories = [join(root, 'src'), join(root, 'scripts/squared')];
-const files = directories.flatMap(collect).filter((file) => /\.(?:js|mjs)$/.test(file)).sort();
+const files = directories.flatMap(collect).filter((file) => /\.(?:js|mjs|ts)$/.test(file)).sort();
 
 if (files.length === 0) throw new Error('No JavaScript runtime files were found under src/');
 
 for (const file of files) {
-	const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+	const typescript = file.endsWith('.ts');
+	const result = spawnSync(process.execPath, [...(typescript ? ['--experimental-strip-types'] : []), '--check', file], { encoding: 'utf8' });
 	if (result.error) throw result.error;
 	if (result.status !== 0) {
 		process.stderr.write(result.stderr || result.stdout);
@@ -17,7 +18,7 @@ for (const file of files) {
 	}
 }
 
-console.log(`Syntax check passed for ${files.length} JavaScript files under src/ and scripts/squared/`);
+console.log(`Syntax check passed for ${files.length} JavaScript/TypeScript files under src/ and scripts/squared/`);
 
 function collect(directory) {
 	return readdirSync(directory).flatMap((name) => {

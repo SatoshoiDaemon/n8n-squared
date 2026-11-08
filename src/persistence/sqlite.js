@@ -36,11 +36,22 @@ export class SqliteStore {
 		return row ? workflowRow(row) : null;
 	}
 
+	async getWorkflowDefinition(id) {
+		const row = this.db.prepare('SELECT definition FROM squared_workflows WHERE id = ?').get(id);
+		return row ? parseJson(row.definition) : null;
+	}
+
 	async saveWorkflow(workflow) {
 		this.db.prepare(`INSERT INTO squared_workflows (id, name, active, definition)
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT (id) DO UPDATE SET name = excluded.name, active = excluded.active,
 			definition = excluded.definition, updated_at = CURRENT_TIMESTAMP`)
+			.run(workflow.id, workflow.name, workflow.active ? 1 : 0, JSON.stringify(workflow));
+		return this.getWorkflow(workflow.id);
+	}
+
+	async createWorkflow(workflow) {
+		this.db.prepare('INSERT INTO squared_workflows (id, name, active, definition) VALUES (?, ?, ?, ?)')
 			.run(workflow.id, workflow.name, workflow.active ? 1 : 0, JSON.stringify(workflow));
 		return this.getWorkflow(workflow.id);
 	}

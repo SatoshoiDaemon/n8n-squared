@@ -16,16 +16,18 @@ try {
 	const startup = startupLog(inspection.logs);
 	const rows = [
 		['Application', appId],
-		['Domain', inspection.appUrl],
-		['Current state', `${String(inspection.appStatus.status || 'unknown')} (running: ${appIsRunning(inspection.appStatus)})`],
-		['Configured memory', inspection.application.ram ? `${inspection.application.ram} MB` : 'not reported'],
+		['Preflight access', inspection.accessFailures.length ? inspection.accessFailures.join('; ') : 'required read endpoints available'],
+		['Domain', inspection.appUrl || 'not available (account:read scope required)'],
+		['Current state', inspection.appStatus.status ? `${String(inspection.appStatus.status)} (running: ${appIsRunning(inspection.appStatus)})` : 'not available (apps:read scope required)'],
+		['Configured memory', inspection.application?.ram ? `${inspection.application.ram} MB` : 'not available (account:read scope required)'],
 		['Runtime database variable', runtime.databaseVariable || 'missing'],
 		['Encryption key', runtime.encryptionKeyPresent ? 'present and valid length' : 'missing or too short'],
 		['Operator token', runtime.accessTokenPresent ? 'present and valid length' : 'missing or too short'],
+		['Additional runtime requirements', runtime.requirements.length ? runtime.requirements.join('; ') : 'no missing runtime requirements detected'],
 		['HTTP binding overrides', runtime.portCompatible && runtime.hostCompatible ? 'compatible with port 80 / 0.0.0.0' : 'incompatible; inspect the named variables before deployment'],
-		['Current CPU/RAM', formatResource(inspection.appStatus.cpu, inspection.appStatus.ram)],
-		['Startup log', startup ? `Squared ${startup.version} on Node ${startup.nodeVersion}` : 'no Squared startup record found'],
-		['Latest historical metric', latestMetric ? `${latestMetric.date}: CPU ${latestMetric.cpu}%, RAM ${latestMetric.ram} MB` : 'not available'],
+		['Current CPU/RAM', inspection.appStatus ? formatResource(inspection.appStatus.cpu, inspection.appStatus.ram) : 'not available (apps:read scope required)'],
+		['Startup log', !inspection.logsAvailable ? 'not available (apps:read scope required)' : startup ? `Squared ${startup.version} on Node ${startup.nodeVersion}` : 'no Squared startup record found'],
+		['Latest historical metric', !inspection.metricsAvailable ? 'not available (apps:read scope required)' : latestMetric ? `${latestMetric.date}: CPU ${latestMetric.cpu}%, RAM ${latestMetric.ram} MB` : 'not available'],
 		['Runtime configuration changes', 'none; inspection is read-only'],
 	];
 	writeActionSummary('Square Cloud pre-deploy inspection', rows);

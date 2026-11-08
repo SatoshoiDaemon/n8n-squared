@@ -32,6 +32,12 @@ try {
 	const appId = requireTargetAppId();
 	const client = new SquareCloudClient(process.env.SQUARECLOUD_API_KEY);
 	const inspection = await inspectSquareCloud({ client, appId, includeMetrics: false });
+	if (inspection.accessFailures.length) {
+		throw new Error(`Required read scopes are missing: ${inspection.accessFailures.join('; ')}`);
+	}
+	if (!inspection.appUrl || !inspection.application) {
+		throw new Error('Square Cloud could not provide the application domain or metadata required for production verification');
+	}
 	appUrl = inspection.appUrl;
 	const environment = runtimeEnvironmentReport(inspection.envs);
 	if (environment.requirements.length) {

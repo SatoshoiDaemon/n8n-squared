@@ -78,21 +78,20 @@ export async function inspectSquareCloud({ client, appId, includeMetrics = true 
 		optionalRequest(() => client.get(`/apps/${encodeURIComponent(appId)}/logs`)),
 		metricsRequest,
 	]);
-	const requiredFailures = [statusResult, envsResult, accountResult].filter((result) => result.error);
-	if (requiredFailures.length) {
-		throw new Error(`Square Cloud API preflight access is incomplete: ${requiredFailures.map((result) => `${result.route} returned ${result.error}`).join('; ')}`);
-	}
-	const appStatus = statusResult.value;
-	const envs = envsResult.value;
-	const account = accountResult.value;
+	const accessFailures = [statusResult, envsResult, accountResult]
+		.filter((result) => result.error)
+		.map((result) => `${result.route} returned ${result.error}`);
+	const appStatus = statusResult.value || null;
+	const envs = envsResult.value || {};
+	const account = accountResult.value || null;
 
-	const application = (account?.applications || []).find((candidate) => candidate.id === appId);
-	if (!application) throw new Error('The configured Square Cloud application was not found in the authenticated account');
-	const domain = application.domain || application.custom;
-	if (typeof domain !== 'string' || domain.length === 0) {
-		throw new Error('The configured application does not expose a domain for production health checks');
-	}
-	const appUrl = domain.startsWith('https://') || domain.startsWith('http://') ? new URL(domain).origin : `https://${domain}`;
+	const application = (account?.applications || []).find((candidate) => candidate.id === appId) || null;
+	if (account && !application) accessFailures.push('GET /v2/users/me did not return the configured application');
+	const domain = application?.domain || application?.custom;
+	const appUrl = typeof domain === 'string' && domain.length > 0
+		? domain.startsWith('https://') || domain.startsWith('http://') ? new URL(domain).origin : `https://${domain}`
+		: null;
+	if (account && application && !appUrl) accessFailures.push('GET /v2/users/me did not return an application domain');
 	const normalizedEnvs = envs && typeof envs === 'object' && !Array.isArray(envs) ? envs : {};
 	return {
 		appId,
@@ -100,6 +99,9 @@ export async function inspectSquareCloud({ client, appId, includeMetrics = true 
 		appUrl,
 		appStatus: appStatus || {},
 		envs: normalizedEnvs,
+		accessFailures,
+		logsAvailable: logs !== null,
+		metricsAvailable: Array.isArray(metrics),
 		logs: logs?.logs || '',
 		metrics: Array.isArray(metrics) ? metrics : [],
 	};

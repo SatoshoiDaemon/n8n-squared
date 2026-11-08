@@ -1,21 +1,36 @@
-# Arquitetura do n8n-squared
+# Arquitetura atual do Squared
 
-Base: n8n 2.42.7, commit `92e4ff858a6ec0dc3ce3995d8696861575698bd0`.
+O runtime do produto está em `src/` e é uma aplicação JavaScript ESM executada diretamente pelo Node.js 24. Não importa o CLI, a configuração ou o carregador de módulos do n8n. O n8n continua registrado em [UPSTREAM.md](../../UPSTREAM.md) como origem histórica do código do repositório; a versão do Squared é independente e começa em `0.1.0`.
 
-O n8n mantém a execução de workflows, a API, o editor Vue, o registro de nodes, credenciais e persistência. O Squared adiciona apenas a configuração e o empacotamento necessários para sua distribuição. Os nomes internos dos packages continuam compatíveis com o monorepo original.
+## Caminho de execução
 
-## Limites da fundação
+~~~text
+npm start
+  └─ src/main.js
+      ├─ src/config.js                 valida ambiente e limites
+      ├─ src/process/lifecycle.js      encerra servidor, agenda e pool PostgreSQL
+      ├─ src/persistence/postgres.js   workflows, execuções e credenciais
+      ├─ src/http/server.js            editor, API, health e webhooks
+      ├─ src/workflows/                validação e serviço de workflows
+      ├─ src/execution/                fila limitada e executor sequencial
+      ├─ src/nodes/                    Set, IF e HTTP Request
+      ├─ src/expressions/              expressões de dados sem eval
+      ├─ src/credentials/              criptografia AES-256-GCM
+      └─ src/triggers/                 agendamento por intervalo
+~~~
 
-- `packages/cli` inicia o backend e serve o editor compilado de `n8n-editor-ui`.
-- `packages/workflow`, `packages/core`, `packages/nodes-base` e os demais packages de runtime continuam no fechamento de dependências gerado por pnpm.
-- O perfil Square Cloud usa Node.js gerenciado pela plataforma, PostgreSQL externo, chave de criptografia estável e dados binários no banco. O launcher adapta host e porta sem alterar o motor.
-- O processo de build produz um workspace reduzido com 46 pacotes internos compilados, ZIP e manifesto de verificação. O lockfile de produção permite instalar dependências públicas no ambiente gerenciado. O ZIP precisa passar por um teste em diretório limpo antes de qualquer afirmação de compatibilidade hospedada.
-- O funcionamento local e em outras PaaS continua disponível pelo CLI original e por variáveis `N8N_*`.
+O editor estático em `src/assets/` cria workflows como uma sequência visual de nodes. Os gatilhos disponíveis são manual, webhook e intervalo. O executor limita simultaneamente o número de execuções ativas e enfileiradas. O código de workflow não é executado como JavaScript arbitrário; portanto, o node Code e extensões npm não fazem parte desta primeira fatia. Isso mantém o processo principal fora da execução direta de código fornecido por usuários enquanto a sandbox isolada é escolhida.
 
-Os quatro pilares futuros são Core, DX, Discord e Cloud. A implementação experimental de temas e Developer Mode foi preservada em uma referência Git local de backup para revisão futura.
+## Estado e segurança
 
-Fixtures de Docker dentro de pacotes de teste e benchmark permanecem quando os próprios testes as utilizam. Eles não participam do build, do ZIP ou da execução na Square Cloud. O processo de distribuição por imagem do upstream foi removido.
+- PostgreSQL guarda definições, entradas/saídas de execução e credenciais cifradas. O banco precisa ser externo e persistente.
+- `SQUARED_ENCRYPTION_KEY` deriva a chave AES-256-GCM. Ela deve ter ao menos 32 caracteres e permanecer igual entre deploys.
+- `SQUARED_ACCESS_TOKEN` protege API, editor e webhooks com autenticação Bearer. Esta versão oferece uma credencial de acesso de operador, não contas individuais.
+- Nenhum arquivo de dados é persistido no container. O armazenamento de binários via Square Blob ainda não está implementado; nodes que precisam de arquivos não fazem parte do runtime atual.
+- O runtime mantém uma pool PostgreSQL de até 4 conexões, 1 execução simultânea e até 16 execuções ativas/em espera por padrão. Esses limites são escolhas operacionais, não evidência de que a meta de 512–1024 MB foi comprovada.
 
-## Configuração Squared
+## Origem e material antigo
 
-`SQUARED_RUNTIME_PROFILE` é carregado pelo `GlobalConfig` existente com valores `standard`, `lightweight` e `developer`. O padrão é `standard`. Os perfis `lightweight` e `developer` estão registrados, mas ainda não alteram o runtime; otimizações e ferramentas serão habilitadas somente quando implementadas e medidas. Variáveis `SQUARED_DISPLAY_NAME`, `SQUARED_SUBDOMAIN` e `SQUARED_MEMORY_MB` configuram o artefato de distribuição. As variáveis de n8n existentes continuam responsáveis pelo banco, criptografia, webhooks e rede.
+O código sob `packages/` permanece no repositório como fonte de referência para a reconstrução gradual de capacidades maiores, inclusive o editor Vue original e centenas de integrações. Ele não entra no ZIP, não é instalado pelo comando de deploy e não é importado pelo runtime em `src/`. O caminho anterior de inicialização Square `deploy/squarecloud/start.cjs` e o empacotamento de 46 workspaces foram removidos.
+
+Os documentos em `docs/audit/` registram a auditoria da árvore anterior. Eles são evidência histórica da arquitetura legada, não a especificação atual do runtime.

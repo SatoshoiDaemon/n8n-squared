@@ -18,7 +18,6 @@ _START_PACKAGE
 .vscode/*
 .idea
 nodelinter.config.json
-**/package-lock.json
 packages/**/.turbo
 .turbo
 .stryker-tmp/

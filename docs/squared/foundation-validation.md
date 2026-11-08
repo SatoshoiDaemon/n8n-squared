@@ -1,5 +1,7 @@
 # Validação da fundação
 
+> Registro histórico do runtime baseado no n8n. Os números e comandos abaixo não descrevem o Squared 0.1.0: a reconstrução em `src/` substituiu esse caminho, removeu o ZIP de 46 workspaces e não usa o build Turbo. Use `docs/squared/architecture.md` e `docs/squared/square-cloud.md` para o estado atual.
+
 Base: n8n 2.42.7. A validação abaixo foi feita localmente em Node.js 24.19.0 e pnpm 12.4.2, com dados de teste em diretórios temporários isolados.
 
 | Verificação | Resultado |

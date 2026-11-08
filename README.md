@@ -1,26 +1,29 @@
-# n8n-squared
+# Squared
 
-n8n-squared é uma base derivada do [n8n](https://github.com/n8n-io/n8n), preparada para self-hosting e distribuição como aplicação Node.js na Square Cloud. Preserva o motor de workflows, o editor visual, os nodes e os formatos de dados da versão-base **2.42.7**.
+Squared é uma aplicação de automação independente, desenvolvida para distribuição na Square Cloud. A versão atual é **0.1.0**. Seu runtime próprio está em `src/` e inicia com Node.js 24 e `npm start`.
 
-Esta fundação concentra-se em uma distribuição reproduzível e no funcionamento local. Temas, Developer Mode, integrações Discord e otimizações de memória serão integrados após a validação da base.
+O núcleo atual oferece editor visual sequencial, gatilhos manuais/webhook/agendados, execução limitada, expressões de dados, nodes Set/HTTP Request/IF, credenciais criptografadas e persistência PostgreSQL. O editor e o runtime não importam o CLI legado. Recursos de código arbitrário e armazenamento de arquivos ainda não fazem parte desta versão.
 
 ## Desenvolvimento
 
-Use Node.js 24 e o pnpm definido em `package.json`.
+Configure PostgreSQL persistente e as variáveis descritas em [Distribuição na Square Cloud](docs/squared/square-cloud.md), depois execute:
 
 ```sh
-corepack enable
-pnpm install --frozen-lockfile
-pnpm build
-pnpm dev:be
+npm ci
+npm test
+npm start
 ```
 
-Em outro terminal, execute `pnpm dev:fe:editor`. A URL do editor aparece no terminal. Defina `N8N_USER_FOLDER` para um diretório de desenvolvimento dedicado. O cadastro inicial da conta é necessário somente para testar a interface autenticada.
+`npm run build` verifica a sintaxe do entrypoint; não há compilação do runtime.
 
-## Distribuição
+## ZIP da Square Cloud
 
-`pnpm build:deploy` gera um pacote Node.js com pacotes internos compilados, lockfile de produção e configuração da Square Cloud. As dependências públicas são instaladas pela plataforma com pnpm. Consulte [instalação na Square Cloud](docs/squared/square-cloud.md) antes de publicar. Este projeto não constrói nem publica imagens Docker.
+```sh
+npm run package:squarecloud
+```
 
-## Origem e licenças
+O comando cria uma aplicação Node independente em `dist/squarecloud/squared-squarecloud.zip`, com dependências de produção instaladas, `npm start` e `src/main.js`. Não executa Turbo nem depende dos workspaces antigos. Consulte o guia de [Square Cloud](docs/squared/square-cloud.md) para variáveis, smoke e deploy.
 
-[UPSTREAM.md](UPSTREAM.md) registra a tag e o commit do código-base. Os avisos de copyright nos arquivos originais permanecem. A base n8n mantém a [Sustainable Use License](LICENSE.md) e os componentes Enterprise preservam sua [licença separada](LICENSE_EE.md). Os créditos pertencem aos [contribuidores do n8n](https://github.com/n8n-io/n8n/graphs/contributors).
+## Código de origem
+
+O repositório ainda contém a árvore histórica `packages/` para referência durante a reconstrução de capacidades, mas ela não participa do runtime nem do ZIP. [UPSTREAM.md](UPSTREAM.md) registra a origem histórica sem vincular o versionamento do Squared aos releases do n8n. Os avisos de copyright e [licenças originais](LICENSE.md) permanecem nos arquivos correspondentes.

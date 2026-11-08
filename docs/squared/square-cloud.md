@@ -1,62 +1,58 @@
-# Instalação na Square Cloud
+# Distribuição do Squared na Square Cloud
 
-O n8n-squared é enviado como uma aplicação Node.js. A Square Cloud gerencia o ambiente de execução; o projeto não requer uma imagem Docker. O ZIP contém o backend compilado, o editor compilado, os nodes, o lockfile de produção, os patches e `squarecloud.app`. A Square Cloud instala as dependências públicas de runtime com pnpm antes de iniciar a aplicação.
+O Squared é enviado como uma aplicação Node.js 24 convencional em um ZIP. O ZIP contém `src/`, o lockfile npm e a dependência de produção `pg`. Não contém o monorepo, workspaces pnpm, Docker ou um passo de compilação. O comando de inicialização é `npm start`; o arquivo principal é `src/main.js`.
 
-## Preparar o artefato
+## Criar o ZIP
 
-Requisitos locais: Node.js 24, pnpm 12.4.2, `tar`, `zip` e `unzip`.
+Requisitos locais: Node.js 24, npm, `zip` e `unzip`.
 
 ```sh
-corepack enable
-pnpm install --frozen-lockfile
-SQUARED_SUBDOMAIN=meu-n8n-squared pnpm build:deploy
+SQUARED_SUBDOMAIN=meu-squared npm run package:squarecloud
 ```
 
-O resultado fica em `dist/squarecloud/n8n-squared-squarecloud.zip`. `manifest.json` registra tamanho e SHA-256. `SQUARED_MEMORY_MB` altera `MEMORY` em `squarecloud.app` (padrão: 2048); escolha um valor compatível com o plano e a memória medida. `SQUARED_DISPLAY_NAME` altera o nome exibido. `SQUARED_SUBDOMAIN` define a publicação web; também é possível configurar o domínio no painel.
+O resultado fica em `dist/squarecloud/squared-squarecloud.zip`. `manifest.json` registra versão do produto, tamanho, hash SHA-256, entrypoint e dependências. O script instala a dependência de runtime no diretório temporário do artefato com `npm ci --omit=dev`, valida o ZIP e recusa arquivos acima de 100 MB. `SQUARED_DISPLAY_NAME`, `SQUARED_SUBDOMAIN` e `SQUARED_MEMORY_MB` configuram `squarecloud.app`; a memória declarada começa em 1024 MB. Esse valor é uma configuração de deploy, não uma medição de RSS ou uma garantia da meta.
 
-O empacotamento inclui os pacotes internos já compilados em um workspace reduzido. O lockfile é derivado das versões fixadas na raiz do projeto. O ZIP não inclui `node_modules`, como recomenda a [documentação da Square Cloud](https://squarecloud.app/en/runtimes/nodejs). O gerenciador definido no pacote é pnpm 12.4.2. Antes do envio, o script rejeita um ZIP maior que 100 MB. A instalação local com `pnpm install --prod --frozen-lockfile` foi validada, mas a instalação hospedada precisa ser confirmada na conta Square Cloud.
+O ZIP já leva `node_modules/pg`; não precisa compilar o monorepo nem instalar 87 workspaces. Na Square Cloud, use Node.js, `MAIN=src/main.js` e o comando `npm start`.
 
-## Persistência e ambiente
+## Variáveis necessárias
 
-Configure as variáveis no painel da aplicação, nunca dentro do ZIP:
+Configure segredos no painel da Square Cloud, nunca no ZIP:
 
 ```text
-DB_TYPE=postgresdb
-DB_POSTGRESDB_HOST=<host do PostgreSQL persistente>
-DB_POSTGRESDB_PORT=5432
-DB_POSTGRESDB_DATABASE=<database>
-DB_POSTGRESDB_USER=<usuario>
-DB_POSTGRESDB_PASSWORD=<senha>
-N8N_ENCRYPTION_KEY=<chave aleatoria estavel entre deploys>
-N8N_DEFAULT_BINARY_DATA_MODE=database
-N8N_EDITOR_BASE_URL=https://<dominio-publico>/
-WEBHOOK_URL=https://<dominio-publico>/
-N8N_PROXY_HOPS=1
+SQUARED_DATABASE_URL=postgresql://usuario:senha@host:5432/squared
+SQUARED_ENCRYPTION_KEY=<segredo aleatorio com ao menos 32 caracteres>
+SQUARED_ACCESS_TOKEN=<token aleatorio com ao menos 24 caracteres>
+PORT=80
+SQUARED_DATABASE_SSL=require
 ```
 
-Use SSL no banco conforme o provedor do PostgreSQL. O backend escuta em `0.0.0.0` e na porta `80` por padrão; `N8N_PORT` ou `PORT` podem mudar isso em outros ambientes. `N8N_HOST` deve representar o domínio público, se definido; não o endereço de escuta. A chave de criptografia deve permanecer a mesma entre deploys, pois protege as credenciais salvas. O modo `database` mantém dados binários junto dos workflows no banco. Arquivos locais gravados por nodes ou extensões exigem armazenamento persistente separado; o artefato não o fornece.
+`SQUARED_DATABASE_URL` aceita uma URL PostgreSQL persistente; `DATABASE_URL` também é reconhecida. Ative `SQUARED_DATABASE_SSL=require` se o provedor exigir TLS. Mantenha a chave de criptografia estável entre deploys. O token Bearer protege editor, API e webhooks. O runtime escuta em `0.0.0.0`; usa `PORT` da Square Cloud ou `SQUARED_PORT` e, por padrão, porta 80.
 
-## Iniciar e conferir
+Limites ajustáveis: `SQUARED_MAX_CONCURRENCY` (1 por padrão, máximo 8), `SQUARED_MAX_QUEUED_EXECUTIONS` (16 por padrão, inclui as ativas e pode ser configurado até 1024), `SQUARED_SCHEDULE_POLL_MS` (5 s) e `SQUARED_HTTP_TIMEOUT_MS` (15 s). Não há resultado de benchmark que autorize declarar suporte medido a 512 ou 1024 MB.
 
-Teste o ZIP em uma pasta limpa antes de enviar:
+## Persistência e recursos
+
+PostgreSQL armazena workflows, execuções e credenciais criptografadas. O container não grava dados duráveis localmente. A integração Square Blob para arquivos binários ainda não foi implementada; esta versão aceita nodes de gatilho manual, webhook e intervalo, além de Set Fields, HTTP Request e IF. O node Code e pacotes npm de terceiros estão fora do runtime até haver um runner isolado adequado.
+
+O editor pode criar, ativar, executar e revisar workflows. Acesse a URL da aplicação e informe `SQUARED_ACCESS_TOKEN`. Para chamar webhook, envie `Authorization: Bearer <token>` e um JSON no corpo.
+
+## Smoke do ZIP
+
+O smoke usa uma base PostgreSQL dedicada para evitar escrita em dados de outra instância. Ele cria registros de teste e não apaga o banco:
 
 ```sh
-mkdir -p /tmp/n8n-squared-smoke
-cd /tmp/n8n-squared-smoke
-unzip /caminho/para/n8n-squared-squarecloud.zip
-corepack enable
-pnpm install --prod --frozen-lockfile
-N8N_USER_FOLDER=/tmp/n8n-squared-data N8N_PORT=5678 node start.cjs
+npm run package:squarecloud
+SQUARED_SMOKE_DATABASE_URL=postgresql://.../squared_smoke npm run smoke:squarecloud
 ```
 
-Em outro terminal, verifique `http://localhost:5678/healthz/readiness` e `http://localhost:5678/`. A página do editor e a resposta de saúde confirmam somente essa execução local. Para persistência hospedada, reinicie após criar um workflow e confirme sua presença e a validade de credenciais.
+O smoke extrai o ZIP em diretório temporário, inicia por `npm start` e verifica readiness, autenticação, editor, gatilhos manual/webhook, execução e API de credenciais. Teste a retenção após reinicialização no seu PostgreSQL antes de usar o deploy em produção.
 
 ## Enviar
 
-Com a [CLI oficial da Square Cloud](https://github.com/squarecloudofc/cli) instalada e autenticada:
+Com a CLI da Square Cloud instalada e autenticada:
 
 ```sh
-pnpm deploy:squarecloud
+npm run deploy:squarecloud
 ```
 
-Esse comando usa o ZIP já gerado. Para atualizar uma aplicação existente, defina `SQUARED_SQUARECLOUD_APP_ID` antes de executá-lo. Não coloque credenciais da Square Cloud no repositório. A CLI reconhece `SQUARECLOUD_API_KEY` no ambiente. Após o upload, confira os logs, a URL pública, `/healthz/readiness`, editor, execução de workflow e persistência após reinicialização. A aceitação do ZIP e o teste hospedado dependem de uma conta e um plano disponíveis.
+Para atualizar uma aplicação existente, defina `SQUARED_SQUARECLOUD_APP_ID`. `SQUARED_SUBDOMAIN` é necessário no empacotamento de uma aplicação nova. Não registre `SQUARECLOUD_API_KEY` no repositório.

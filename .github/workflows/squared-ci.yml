@@ -7,28 +7,39 @@ on:
     branches: [main]
 
 jobs:
-  foundation:
+  runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: squared_smoke
+          POSTGRES_PASSWORD: squared
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d squared_smoke"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 12.4.2
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm --filter @n8n/config lint
-      - run: pnpm --filter @n8n/config test
-      - run: pnpm package:squarecloud
-      - run: unzip -tqq dist/squarecloud/n8n-squared-squarecloud.zip
-      - run: pnpm smoke:squarecloud
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run package:squarecloud
+      - run: unzip -tqq dist/squarecloud/squared-squarecloud.zip
+      - run: npm run smoke:squarecloud
+        env:
+          SQUARED_SMOKE_DATABASE_URL: postgresql://postgres:squared@127.0.0.1:5432/squared_smoke
       - uses: actions/upload-artifact@v4
         with:
-          name: n8n-squared-squarecloud
+          name: squared-squarecloud
           path: |
-            dist/squarecloud/n8n-squared-squarecloud.zip
+            dist/squarecloud/squared-squarecloud.zip
             dist/squarecloud/manifest.json

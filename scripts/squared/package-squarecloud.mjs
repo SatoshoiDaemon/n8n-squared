@@ -15,7 +15,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
@@ -84,8 +84,15 @@ writeFileSync(
 // The deploy ZIP is a conventional Node app. It has no workspace install or build step.
 run('npm', ['ci', '--omit=dev', '--ignore-scripts'], app);
 const archiveEntries = normalizeArchiveMetadata(app);
-run('zip', ['-q', '-X', archive, ...archiveEntries], app, { ...process.env, TZ: 'UTC' });
-run('unzip', ['-tqq', archive]);
+const normalizedEntries = archiveEntries.map((entry) => entry.split(sep).join('/'));
+if (hasExecutable('zip')) {
+	run('zip', ['-q', '-X', archive, ...normalizedEntries], app, { ...process.env, TZ: 'UTC' });
+} else if (process.platform === 'win32' && hasExecutable('tar')) {
+	run('tar', ['-a', '-c', '-f', archive, ...normalizedEntries], app);
+} else {
+	throw new Error('ZIP creation requires zip; Windows also supports the built-in tar command');
+}
+validateArchive(archive);
 const bytes = statSync(archive).size;
 if (bytes > maxUploadBytes) throw new Error(`Square Cloud upload limit exceeded: ${bytes} > ${maxUploadBytes} bytes`);
 
@@ -111,6 +118,16 @@ function removeTests(directory) {
 		if (statSync(entry).isDirectory()) removeTests(entry);
 		else if (/\.(test|spec)\.js$/.test(name)) rmSync(entry);
 	}
+}
+
+function hasExecutable(command) {
+	return !spawnSync(command, ['--version'], { stdio: 'ignore' }).error;
+}
+
+function validateArchive(path) {
+	if (hasExecutable('unzip')) run('unzip', ['-tqq', path]);
+	else if (process.platform === 'win32' && hasExecutable('tar')) run('tar', ['-tf', path]);
+	else throw new Error('ZIP validation requires unzip; Windows also supports the built-in tar command');
 }
 
 function normalizeArchiveMetadata(directory) {

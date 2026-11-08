@@ -18,6 +18,14 @@ export function verifySquareCloudPackage() {
 		if (result.status !== 0) throw new Error(`${command} failed while verifying the Square Cloud ZIP`);
 		return result.stdout;
 	}
+	function hasExecutable(command) {
+		return !spawnSync(command, ['--version'], { stdio: 'ignore' }).error;
+	}
+	function archiveOutput(unzipArgs, tarArgs) {
+		if (hasExecutable('unzip')) return run('unzip', unzipArgs);
+		if (process.platform === 'win32' && hasExecutable('tar')) return run('tar', tarArgs);
+		throw new Error('ZIP inspection requires unzip; Windows also supports the built-in tar command');
+	}
 
 	const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 	const bytes = statSync(archive).size;
@@ -30,8 +38,8 @@ export function verifySquareCloudPackage() {
 	}
 	if (bytes === 0 || bytes > 100_000_000) throw new Error('Square Cloud ZIP is empty or exceeds the 100 MB upload limit');
 
-	run('unzip', ['-tqq', archive]);
-	const entries = run('unzip', ['-Z1', archive]).split(/\r?\n/).filter(Boolean);
+	archiveOutput(['-tqq', archive], ['-tf', archive]);
+	const entries = archiveOutput(['-Z1', archive], ['-tf', archive]).split(/\r?\n/).filter(Boolean);
 	const requiredEntries = ['package.json', 'package-lock.json', 'squarecloud.app', 'src/main.js', 'node_modules/pg/package.json'];
 	for (const entry of requiredEntries) {
 		if (!entries.includes(entry)) throw new Error(`Square Cloud ZIP is missing ${entry}`);
@@ -39,11 +47,11 @@ export function verifySquareCloudPackage() {
 	if (entries.some((entry) => entry.startsWith('packages/') || (entry.startsWith('src/') && /\.(test|spec)\.js$/.test(entry)))) {
 		throw new Error('Square Cloud ZIP must not include the historical workspaces or test files');
 	}
-	if (entries.some((entry) => /(^|\/)\.env(?:\.|$)/.test(entry) || /(^|\/)(id_rsa|credentials\.json)$/.test(entry))) {
-		throw new Error('Square Cloud ZIP contains a prohibited environment or credential file');
+	if (entries.some((entry) => /(^|\/)\.env(?:\.|$)/.test(entry) || /(^|\/)(id_rsa|credentials\.json|encryption-key|bootstrap-code)$/.test(entry) || /(^|\/)(?:\.)?squared-data(?:\/|$)/.test(entry))) {
+		throw new Error('Square Cloud ZIP contains a prohibited environment, credential, or persistent data file');
 	}
 
-	const runtimePackage = JSON.parse(run('unzip', ['-p', archive, 'package.json']));
+	const runtimePackage = JSON.parse(archiveOutput(['-p', archive, 'package.json'], ['-xOf', archive, 'package.json']));
 	if (runtimePackage.main !== 'src/main.js' || runtimePackage.scripts?.start !== 'node src/main.js') {
 		throw new Error('ZIP runtime must start src/main.js through npm start');
 	}
@@ -52,7 +60,7 @@ export function verifySquareCloudPackage() {
 	}
 
 	const squareCloudConfig = Object.fromEntries(
-		run('unzip', ['-p', archive, 'squarecloud.app'])
+		archiveOutput(['-p', archive, 'squarecloud.app'], ['-xOf', archive, 'squarecloud.app'])
 			.split(/\r?\n/)
 			.filter((line) => line && !line.startsWith('#'))
 			.map((line) => {

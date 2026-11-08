@@ -20,19 +20,6 @@ jobs:
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_DB: squared_smoke
-          POSTGRES_PASSWORD: squared
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d squared_smoke"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -52,8 +39,6 @@ jobs:
         env:
           SQUARED_MEMORY_MB: '1024'
       - run: npm run smoke:squarecloud
-        env:
-          SQUARED_SMOKE_DATABASE_URL: postgresql://postgres:squared@127.0.0.1:5432/squared_smoke
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.verify.outcome == 'success' }}
         with:
@@ -65,7 +50,7 @@ jobs:
           retention-days: 90
 
   squarecloud_inspect:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'inspect' && github.ref == 'refs/heads/deploy/squarecloud-production' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'inspect' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/squared-first-boot') }}
     needs: runtime
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -83,7 +68,7 @@ jobs:
           SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
 
   squarecloud_deploy:
-    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/deploy/squarecloud-production')) }}
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/squared-first-boot')) }}
     needs: runtime
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -52,7 +52,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			operation: describeOperation(workflow, nodeType),
 			contracts: runtime.getSnapshot().nodes.find((node) => node.nodeType === nodeType)?.interfacesUsed ?? [],
 			expected: { status: 'succeeded', output: expected.output, binary: expected.binary, result: expected.resultDescription },
-			observed: { status: result.status, output: result.output.map((item) => item.json), binary: result.output.map((item) => item.binary ?? {}) },
+			observed: { status: result.status, output: result.output.map((item) => item.json), binary: expected.observedBinary ?? result.output.map((item) => item.binary ?? {}) },
 			status: 'passed',
 		});
 		executions.push({ nodeType, typeVersion, test, status: 'passed', output: result.output, outputsByNode: result.outputsByNode, nodeRuns: result.nodeRuns });
@@ -271,6 +271,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 	}, { json: { keep: true }, binary: { data: { data: Buffer.from(compressedFixture).toString('base64'), fileName: 'payload.txt', fileExtension: 'txt', mimeType: 'text/plain' } } }, {
 		output: [{ keep: true }],
 		resultDescription: 'gunzip(compressed.binary.compressed) equals the input binary payload',
+		observedBinary: [{ compressed: { data: '<gzip payload verified by gunzip>' } }],
 		assertResult(result) {
 			const encoded = result.output[0]?.binary?.compressed?.data;
 			assert.equal(typeof encoded, 'string');

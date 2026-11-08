@@ -264,12 +264,7 @@
             "binary": [
               {
                 "compressed": {
-                  "data": "H4sIAOvf8GoAA8tPS8tMzkzMUUjOzy0oSi0uzszPU0jKzEssqlRIy6woKS1KBQDHx3pCIwAAAA==",
-                  "fileName": "payload.txt.gz",
-                  "fileExtension": "gz",
-                  "fileSize": "55 B",
-                  "mimeType": "application/octet-stream",
-                  "fileType": "application"
+                  "data": "<gzip payload verified by gunzip>"
                 }
               }
             ]

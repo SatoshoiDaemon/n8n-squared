@@ -39,6 +39,7 @@ export function loadConfig(env = process.env) {
 		throw new Error('SQUARED_ACCESS_TOKEN must contain at least 24 characters');
 	}
 	const dataDir = resolve(env.SQUARED_DATA_DIR || join(process.cwd(), 'squared-data'));
+	const n8nPackagesDir = resolve(env.SQUARED_N8N_PACKAGES_DIR || join(dataDir, 'n8n-nodes', 'node_modules'));
 	const temporaryRoot = resolve(tmpdir());
 	const relativeToTemp = relative(temporaryRoot, dataDir);
 	if (
@@ -76,6 +77,7 @@ export function loadConfig(env = process.env) {
 		port,
 		host: env.SQUARED_HOST || DEFAULTS.host,
 		dataDir,
+		n8nPackagesDir,
 		databaseUrl,
 		databaseSsl: env.SQUARED_DATABASE_SSL === 'require',
 		encryptionKey: env.SQUARED_ENCRYPTION_KEY || undefined,

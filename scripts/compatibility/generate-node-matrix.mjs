@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runN8nBaseCompatibilityProbe } from '../../src/nodes/n8n/compatibility-probe.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const referencePackages = [
@@ -10,9 +11,10 @@ const referencePackages = [
 ];
 const outputJson = join(root, 'docs/squared/compatibility-matrix.json');
 const outputSummary = join(root, 'docs/squared/compatibility-matrix.md');
+const runtimeEvidencePath = join(root, 'docs/squared/compatibility-runtime-results.json');
 const knownFailures = [
-	'The package is present as historical source only; it is not installed in the Squared runtime.',
-	'Squared does not import node implementation code or provide the complete n8n execution-context/helper contracts.',
+	'The package is not bundled with Squared; configure SQUARED_N8N_PACKAGES_DIR and install the package with its declared dependencies.',
+	'No successful execution has yet exercised this node version against Squared contracts.',
 	'No differential execution result against an authenticated n8n reference instance is available.',
 ];
 
@@ -30,7 +32,7 @@ for (const reference of referencePackages) {
 		const source = await readSource(absoluteSource);
 		const metadataSource = await readSourceClosure(absoluteSource, packageRoot, sourceCache);
 		const declaredNodeName = findNodeType(metadataSource) ?? basename(sourcePath).replace(/\.node\.ts$/i, '');
-		const nodeType = declaredNodeName.includes('.') ? declaredNodeName : `${reference.packageName}.${declaredNodeName}`;
+		const nodeType = declaredNodeName.includes('.') ? declaredNodeName : `${reference.packageName}.${lowerFirst(declaredNodeName)}`;
 		const interfacesUsed = [...new Set(metadataSource.match(/\bI(?:Execute|ExecuteSingle|SupplyData|Trigger|Poll|Webhook|Hook|LoadOptions|NodeExecutionData|NodeType|CredentialType|WorkflowNodeContext|NodeTypeDescription)\w*\b/g) ?? [])].sort();
 		const entryImports = declaredDependencyImports(source, manifest, reference.packageName);
 		const sourceClosureDependencies = declaredDependencyImports(metadataSource, manifest, reference.packageName);
@@ -57,6 +59,50 @@ for (const reference of referencePackages) {
 	}
 }
 
+let runtimeEvidence = await readFile(runtimeEvidencePath, 'utf8').then(JSON.parse).catch(() => null);
+if (process.env.SQUARED_N8N_PACKAGES_DIR) {
+	const probe = await runN8nBaseCompatibilityProbe(process.env.SQUARED_N8N_PACKAGES_DIR);
+	const validatedTypes = new Set(probe.executions.map((execution) => execution.nodeType));
+	runtimeEvidence = {
+		package: 'n8n-nodes-base',
+		packageVersion: probe.nodes.find((node) => node.packageName === 'n8n-nodes-base')?.packageVersion ?? 'unknown',
+		packageSource: 'installed npm package loaded from SQUARED_N8N_PACKAGES_DIR',
+		nodesDiscovered: probe.nodesDiscovered,
+		deterministicExecutions: probe.executions.length,
+		differentialAgainstN8n: false,
+		nodes: probe.nodes.filter((node) => validatedTypes.has(node.nodeType)).map((node) => ({
+			package: node.packageName,
+			packageVersion: node.packageVersion,
+			node: node.nodeType,
+			version: node.version,
+			interfacesUsed: node.interfacesUsed,
+			compatibility: node.compatibility,
+			validationEvidence: node.validationEvidence ?? [],
+			knownFailures: node.knownFailures,
+		})),
+		credentials: probe.credentials.filter((credential) => credential.loaded).map((credential) => ({
+			package: credential.packageName,
+			packageVersion: credential.packageVersion,
+			credentialType: credential.credentialType,
+			loaded: credential.loaded,
+			configurable: credential.configurable,
+			knownFailures: credential.knownFailures,
+		})),
+	};
+	await writeFile(runtimeEvidencePath, `${JSON.stringify(runtimeEvidence, null, 2)}\n`);
+}
+const runtimeNodes = new Map((runtimeEvidence?.nodes ?? []).map((node) => [node.node, node]));
+for (const record of records) {
+	const runtimeNode = runtimeNodes.get(record.node);
+	if (!runtimeNode || record.package !== runtimeNode.package) continue;
+	record.runtimePackageVersion = runtimeNode.packageVersion;
+	record.runtimeVersion = runtimeNode.version;
+	record.interfacesUsed = [...new Set([...record.interfacesUsed, ...runtimeNode.interfacesUsed])].sort();
+	record.compatibility = { ...record.compatibility, ...runtimeNode.compatibility };
+	record.validationEvidence = runtimeNode.validationEvidence;
+	record.knownFailures = record.knownFailures.filter((failure) => !knownFailures.slice(0, 2).includes(failure));
+	record.knownFailures.push(...runtimeNode.knownFailures.filter((failure) => !record.knownFailures.includes(failure)));
+}
 records.sort((left, right) => `${left.package}:${left.node}`.localeCompare(`${right.package}:${right.node}`));
 const stages = ['discovered', 'loaded', 'configurable', 'executable', 'validated'];
 const summary = {
@@ -75,36 +121,49 @@ const summary = {
 			};
 		}),
 	communityPackages: { discovered: 0, limitation: 'No community package list is available from the configured reference instance.' },
+	runtimeValidation: runtimeEvidence ? {
+		package: runtimeEvidence.package,
+		packageVersion: runtimeEvidence.packageVersion,
+		nodesDiscovered: runtimeEvidence.nodesDiscovered,
+		deterministicExecutions: runtimeEvidence.deterministicExecutions,
+		nodesValidated: runtimeEvidence.nodes.filter((node) => node.compatibility.validated).length,
+		credentialSchemasLoaded: runtimeEvidence.credentials?.filter((credential) => credential.loaded).length ?? 0,
+		credentialSchemasConfigurable: runtimeEvidence.credentials?.filter((credential) => credential.configurable).length ?? 0,
+		differentialAgainstN8n: runtimeEvidence.differentialAgainstN8n,
+		evidenceFile: 'docs/squared/compatibility-runtime-results.json',
+	} : null,
 	nodeCount: records.length,
 	stageCounts: Object.fromEntries(stages.map((stage) => [stage, records.filter((record) => record.compatibility[stage]).length])),
 	fullyValidatedNodes: records.filter((record) => record.compatibility.validated).length,
 	knownLimitations: [
-		'Historical source manifests identify package files but do not prove an installed n8n version or load generated JSON descriptions.',
-		'Node implementation modules are intentionally not imported or executed by this generator.',
-		'Executable and differential validation stages remain false until an isolated execution adapter and reference instance are available.',
+		'Only nodes with a recorded successful execution are marked executable; untested package entries remain explicitly incomplete.',
+		'Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.',
+		'No differential execution against the configured live reference was possible because its URL served Squared and exposed no authenticated n8n API.',
+		'Community node package discovery requires an installed package directory; no reference-instance community package list was available.',
 	],
 };
 
 await mkdir(dirname(outputJson), { recursive: true });
 await writeFile(outputJson, `${JSON.stringify({ summary, nodes: records }, null, 2)}\n`);
 await writeFile(outputSummary, renderSummary(summary, credentialPackages));
-console.log(`Generated ${records.length} node records. Stages: ${stages.map((stage) => `${stage}=${summary.stageCounts[stage]}`).join(', ')}.`);
+	console.log(`Generated ${records.length} node records. Stages: ${stages.map((stage) => `${stage}=${summary.stageCounts[stage]}`).join(', ')}.`);
 
 function renderSummary(matrix, credentials) {
 	const packageLines = matrix.referencePackages.map((item) => `| \`${item.package}\` | ${item.version} | ${item.nodesDiscovered} |`).join('\n');
 	const credentialLines = credentials.map((item) => `| \`${item.package}\` | ${item.packageVersion} | ${item.discoveredCredentials} |`).join('\n');
 	const stageLines = stages.map((stage) => `| ${stage} | ${matrix.stageCounts[stage]} / ${matrix.nodeCount} |`).join('\n');
+	const credentialSchemaLabel = matrix.runtimeValidation?.credentialSchemasLoaded === 1 ? '1 schema de credencial' : `${matrix.runtimeValidation?.credentialSchemasLoaded ?? 0} schemas de credencial`;
 	return `# Matriz de compatibilidade de nodes\n\n` +
-		`Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.md). O snapshot registra n8n 2.42.7, mas os manifests dos pacotes abaixo têm versões próprias. A URL configurada para a instalação de referência responde como Squared 0.1.0 e não permite validar uma instalação n8n.\n\n` +
+		`Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.md), com evidência de execução de módulos npm reais quando disponível. O snapshot registra n8n 2.42.7, mas os manifests dos pacotes abaixo têm versões próprias.\n\n` +
 		`## Pacotes de referência\n\n| Pacote | Versão do manifest | Nodes descobertos |\n| --- | ---: | ---: |\n${packageLines}\n\n` +
 		`| Pacote | Versão do manifest | Credenciais descobertas |\n| --- | ---: | ---: |\n${credentialLines}\n\n` +
 		`## Etapas\n\n| Estado | Cobertura |\n| --- | ---: |\n${stageLines}\n\n` +
-		`O JSON ao lado contém um registro por entrada de node nos manifests, com tipo de execução inferido estaticamente, versão encontrada no source, dependências externas detectadas na closure local do source, imports diretos do arquivo de entrada, interfaces reconhecidas, licença declarada e falhas conhecidas. As dependências declaradas no manifest aparecem uma vez por pacote no resumo. A inferência estática não conta como carregamento ou teste.\n\n` +
-		`Não há nodes carregados, configuráveis, executáveis ou validados nesta matriz. O catálogo externo ainda não está instalado no runtime e o código dos nodes não é importado pelo processo Squared. Isso evita marcar nomes/metadados como compatibilidade executável. Community packages: não descobertos; a instância de referência não disponibiliza sua lista autenticada.\n`;
+		`O JSON ao lado registra cada node dos manifests com tipo de execução, versão, dependências detectadas, interfaces, licença e evidência por teste. Nodes com status executável foram carregados do pacote publicado e executaram seu próprio método; nomes e metadados sem uma execução aprovada permanecem como descobertos.\n\n` +
+		`${matrix.runtimeValidation ? `A validação local executou ${matrix.runtimeValidation.deterministicExecutions} casos determinísticos usando n8n-nodes-base@${matrix.runtimeValidation.packageVersion}, marcou ${matrix.runtimeValidation.nodesValidated} tipos como validados e carregou ${credentialSchemaLabel}. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json).` : 'Ainda não há evidência de execução do pacote instalado. Defina SQUARED_N8N_PACKAGES_DIR e execute npm run compatibility:validate.'} Community packages descobertos na referência: não disponíveis.\n`;
 }
 
 function findNodeType(source) {
-	const descriptionName = source.match(/displayName\s*:\s*['"][^'"]+['"][\s\S]{0,500}?\bname\s*:\s*['"]([^'"]+)['"]/m)?.[1];
+	const descriptionName = source.match(/\b(?:base)?description\s*(?::\s*[^=]+)?=\s*\{\s*displayName\s*:\s*['"][^'"]+['"][\s\S]{0,500}?\bname\s*:\s*['"]([^'"]+)['"]/im)?.[1];
 	return descriptionName ?? source.match(/\bname\s*:\s*['"](n8n-nodes-[^'"]+)['"]/m)?.[1] ?? null;
 }
 
@@ -130,6 +189,8 @@ function classifyExecution(source) {
 	if (/customOperations/.test(source)) types.push('customOperations');
 	return types;
 }
+
+function lowerFirst(value) { return value ? value[0].toLowerCase() + value.slice(1) : value; }
 
 function packageSpecifier(specifier) {
 	if (!specifier || specifier.startsWith('.') || specifier.startsWith('node:')) return null;

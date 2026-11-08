@@ -59,9 +59,34 @@ export class WorkflowService {
 	async execute(id, triggerType, input = {}) {
 		const workflow = await this.get(id);
 		if (triggerType !== 'manual' && !workflow.active) throw new RequestError(409, 'Workflow is inactive');
+		if (isN8nWorkflow(workflow)) {
+			let graph;
+			try { graph = buildWorkflowGraph(workflow); }
+			catch (error) { throw new RequestError(409, `Workflow graph is invalid: ${error.message}`); }
+			const roots = graph.document.nodes.filter((node) => (graph.incoming.get(node.name) ?? []).length === 0);
+			const matchingRoots = roots.filter((node) => matchesN8nTrigger(node, triggerType));
+			if (matchingRoots.length !== 1) {
+				throw new RequestError(409, `Workflow must have exactly one ${triggerType} trigger with no incoming connections`);
+			}
+			return this.executionEngine.submit(workflow, triggerType, input, { startNode: matchingRoots[0].name });
+		}
 		const trigger = workflow.nodes[0].type;
 		const expectedType = `trigger.${triggerType}`;
 		if (trigger !== expectedType) throw new RequestError(409, `Workflow does not use ${triggerType} trigger`);
 		return this.executionEngine.submit(workflow, triggerType, input);
 	}
+}
+
+function isN8nWorkflow(workflow) {
+	return Boolean((workflow.connections && typeof workflow.connections === 'object') ||
+		workflow.nodes?.some((node) => typeof node.type === 'string' && node.type.startsWith('n8n-nodes-')));
+}
+
+function matchesN8nTrigger(node, triggerType) {
+	if (typeof node.type !== 'string') return false;
+	const name = node.type.slice(node.type.lastIndexOf('.') + 1).toLowerCase();
+	if (triggerType === 'manual') return name === 'manualtrigger' || name === 'executeworkflowtrigger';
+	if (triggerType === 'webhook') return name === 'webhook' || name === 'webhooktrigger';
+	if (triggerType === 'schedule') return name === 'scheduletrigger' || name === 'cron';
+	return false;
 }

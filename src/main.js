@@ -9,6 +9,8 @@ import { createStore } from './persistence/store.js';
 import { installShutdownHandlers } from './process/lifecycle.js';
 import { WorkflowScheduler } from './triggers/scheduler.js';
 import { WorkflowService } from './workflows/service.js';
+import { GraphExecutionEngine, NodeAdapterRegistry } from './execution/graph-engine.ts';
+import { N8nNodePackageRuntime } from './nodes/n8n/runtime.ts';
 import { readFile } from 'node:fs/promises';
 
 const config = loadConfig();
@@ -29,9 +31,21 @@ async function start() {
 			return credential ? vault.open(credential.encryptedValue) : null;
 		},
 	});
+	const n8nNodeRuntime = new N8nNodePackageRuntime(config.n8nPackagesDir);
+	const n8nAdapterRegistry = new NodeAdapterRegistry();
+	const n8nPackages = await n8nNodeRuntime.initialize(n8nAdapterRegistry);
+	const graphEngine = new GraphExecutionEngine(n8nAdapterRegistry, async (reference) => {
+		let credential = reference.id ? await store.getCredential(reference.id) : null;
+		if (!credential && reference.name) {
+			const saved = (await store.listCredentials()).find((item) => item.name === reference.name);
+			if (saved) credential = await store.getCredential(saved.id);
+		}
+		return credential ? vault.open(credential.encryptedValue) : null;
+	});
 	const engine = new ExecutionEngine({
 		store,
 		registry,
+		graphEngine,
 		concurrency: config.maxConcurrency,
 		maxQueued: config.maxQueuedExecutions,
 		requestTimeoutMs: config.requestTimeoutMs,
@@ -39,7 +53,7 @@ async function start() {
 	});
 	const workflows = new WorkflowService(store, engine);
 	const scheduler = new WorkflowScheduler({ store, workflowService: workflows, pollMs: config.schedulePollMs });
-	const server = createHttpServer({ config: { ...config, version: product.version }, store, workflows, vault, auth });
+	const server = createHttpServer({ config: { ...config, version: product.version }, store, workflows, vault, auth, n8nNodeRuntime });
 	installShutdownHandlers({ server, scheduler, store, executionEngine: engine });
 	server.once('error', (error) => {
 		console.error('HTTP server failed', error?.name || 'Error', error?.code || 'unknown');
@@ -50,6 +64,9 @@ async function start() {
 		console.log(
 			`Squared ${product.version} (Node ${process.versions.node}) listening on http://${config.host}:${config.port}`,
 		);
+		if (n8nPackages.packages.length) {
+			console.log(`Loaded n8n package manifests: ${n8nPackages.packages.join(', ')} (${n8nPackages.nodes.length} nodes discovered)`);
+		}
 	});
 	scheduler.start();
 }

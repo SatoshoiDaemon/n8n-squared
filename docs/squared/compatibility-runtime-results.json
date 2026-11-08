@@ -1,0 +1,867 @@
+{
+  "package": "n8n-nodes-base",
+  "packageVersion": "2.42.5",
+  "packageSource": "installed npm package loaded from SQUARED_N8N_PACKAGES_DIR",
+  "nodesDiscovered": 444,
+  "deterministicExecutions": 28,
+  "differentialAgainstN8n": false,
+  "nodes": [
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.compareDatasets",
+      "version": [
+        1,
+        2,
+        2.1,
+        2.2,
+        2.3
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2.3,
+          "test": "Compare Datasets v2.3 joins two input ports and routes matching items",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.crypto",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Crypto v2 hashes a fixed string with SHA-256",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.dateTime",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getTimezone",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Date & Time v2 formats a fixed date deterministically",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.convertToFile",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.prepareBinaryData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Convert to File v1.1 encodes a JSON string into real binary data",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.filter",
+      "version": [
+        1,
+        2,
+        2.1,
+        2.2,
+        2.3
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2.3,
+          "test": "Filter v2.3 true and false outputs",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.github",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getCredentials",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.constructExecutionMetaData",
+        "IExecuteFunctions.helpers.requestWithAuthentication",
+        "IExecuteFunctions.helpers.returnJsonArray",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "GitHub repository:get uses the published node and GithubApi credential against the local fixture",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.html",
+      "version": [
+        1,
+        1.1,
+        1.2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.2,
+          "test": "HTML v1.2 extracts a CSS-selected text value",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.httpRequest",
+      "version": [
+        1,
+        2,
+        3,
+        4,
+        4.1,
+        4.2,
+        4.3,
+        4.4,
+        4.5
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getContext",
+        "IExecuteFunctions.getCredentials",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getMode",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.request",
+        "IExecuteFunctions.sendMessageToUI",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 4.5,
+          "test": "HTTP Request v4.5 to local controlled JSON fixture",
+          "status": "passed"
+        },
+        {
+          "typeVersion": 4.5,
+          "test": "HTTP Request v4.5 applies a real HttpHeaderAuth credential",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.if",
+      "version": [
+        1,
+        2,
+        2.1,
+        2.2,
+        2.3
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2.3,
+          "test": "If v2.3 true and false outputs",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.itemLists",
+      "version": [
+        1,
+        2,
+        2.1,
+        2.2,
+        3,
+        3.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 executes the published splitOutItems operation",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.markdown",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.returnJsonArray",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Markdown v1 converts HTML using the published converter",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.moveBinaryData",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.getBinaryDataBuffer",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Convert to/from Binary Data v1 converts JSON bytes using the published node",
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1,
+          "test": "Convert to/from Binary Data v1 parses inline JSON binary data",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.noOp",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "NoOp v1 passes items unchanged",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.renameKeys",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Rename Keys v1 renames a configured JSON property",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.set",
+      "version": [
+        1,
+        2,
+        3,
+        3.1,
+        3.2,
+        3.3,
+        3.4,
+        3.5
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 3.5,
+          "test": "Set v3.5 expression and keep input fields",
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1,
+          "test": "Set v1 expression and keep input fields",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.spreadsheetFile",
+      "version": [
+        1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Spreadsheet File v2 reads deterministic CSV binary data into JSON items",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.stopAndError",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Stop and Error v1 propagates its configured workflow error",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.switch",
+      "version": [
+        1,
+        2,
+        3,
+        3.1,
+        3.2,
+        3.3,
+        3.4
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 3.3,
+          "test": "Switch v3.3 rule outputs and fallback none",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.xml",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "XML v1 parses XML into a JSON object",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.aggregate",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Aggregate v1 groups a selected field into one item",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.limit",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Limit v1 returns the configured first items",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.removeDuplicates",
+      "version": [
+        1,
+        1.1,
+        2
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 2,
+          "test": "Remove Duplicates v2 removes repeated input items",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.splitOut",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Split Out v1 expands an array while keeping other fields",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.sort",
+      "version": [
+        1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Sort v1 orders items using its declared field configuration",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "node": "n8n-nodes-base.summarize",
+      "version": [
+        1,
+        1.1
+      ],
+      "interfacesUsed": [
+        "IExecuteFunctions",
+        "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
+        "INodeType"
+      ],
+      "compatibility": {
+        "discovered": true,
+        "loaded": true,
+        "configurable": true,
+        "executable": true,
+        "validated": true
+      },
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Summarize v1.1 aggregates numeric input fields",
+          "status": "passed"
+        }
+      ],
+      "knownFailures": []
+    }
+  ],
+  "credentials": [
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "credentialType": "githubApi",
+      "loaded": true,
+      "configurable": true,
+      "knownFailures": []
+    },
+    {
+      "package": "n8n-nodes-base",
+      "packageVersion": "2.42.5",
+      "credentialType": "httpHeaderAuth",
+      "loaded": true,
+      "configurable": true,
+      "knownFailures": []
+    }
+  ]
+}

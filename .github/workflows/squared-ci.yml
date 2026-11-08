@@ -1,10 +1,20 @@
-name: Squared CI
+name: Squared CI and Square Cloud Deploy
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect Square Cloud settings or deploy the verified ZIP
+        required: true
+        type: choice
+        options:
+          - inspect
+          - deploy
+        default: inspect
 
 jobs:
   runtime:
@@ -32,14 +42,68 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npm run package:squarecloud
-      - run: unzip -tqq dist/squarecloud/squared-squarecloud.zip
+      - name: Package Squared 0.1.0 for Square Cloud
+        run: npm run package:squarecloud
+        env:
+          SQUARED_MEMORY_MB: '1024'
+      - name: Verify Square Cloud package
+        id: verify
+        run: npm run verify:squarecloud
+        env:
+          SQUARED_MEMORY_MB: '1024'
       - run: npm run smoke:squarecloud
         env:
           SQUARED_SMOKE_DATABASE_URL: postgresql://postgres:squared@127.0.0.1:5432/squared_smoke
       - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.verify.outcome == 'success' }}
         with:
           name: squared-squarecloud
           path: |
             dist/squarecloud/squared-squarecloud.zip
             dist/squarecloud/manifest.json
+          if-no-files-found: error
+          retention-days: 90
+
+  squarecloud_inspect:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'inspect' && github.ref == 'refs/heads/deploy/squarecloud-production' }}
+    needs: runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Read Square Cloud configuration without changing it
+        run: node scripts/squared/inspect-squarecloud.mjs
+        env:
+          SQUARECLOUD_API_KEY: ${{ secrets.SQUARECLOUD_API_KEY }}
+          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
+
+  squarecloud_deploy:
+    if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'deploy' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/deploy/squarecloud-production')) }}
+    needs: runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    concurrency:
+      group: squarecloud-production-59e2efa4975445339e8a6f7ad5295821
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: squared-squarecloud
+          path: dist/squarecloud
+      - name: Deploy, verify production and run non-destructive smoke checks
+        run: node scripts/squared/deploy-squarecloud.mjs
+        env:
+          SQUARECLOUD_API_KEY: ${{ secrets.SQUARECLOUD_API_KEY }}
+          SQUARECLOUD_APP_ID: ${{ secrets.SQUARECLOUD_APP_ID || '59e2efa4975445339e8a6f7ad5295821' }}
+          SQUARED_MEMORY_MB: '1024'

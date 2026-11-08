@@ -9,11 +9,13 @@
 	"scripts": {
 		"start": "node src/main.js",
 		"dev": "node --watch src/main.js",
-		"build": "node --check src/main.js",
+		"build": "node scripts/squared/check-runtime.mjs",
 		"build:deploy": "npm run package:squarecloud",
 		"package:squarecloud": "node scripts/squared/package-squarecloud.mjs",
+		"verify:squarecloud": "node scripts/squared/verify-squarecloud.mjs",
 		"smoke:squarecloud": "node scripts/squared/smoke-squarecloud.mjs",
 		"deploy:squarecloud": "node scripts/squared/deploy-squarecloud.mjs",
+		"inspect:squarecloud": "node scripts/squared/inspect-squarecloud.mjs",
 		"test": "node --test src/*.test.js src/**/*.test.js"
 	},
 	"dependencies": {

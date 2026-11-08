@@ -42,7 +42,9 @@ async function start() {
 		void store.close().finally(() => { process.exitCode = 1; });
 	});
 	server.listen(config.port, config.host, () => {
-		console.log(`Squared ${product.version} listening on http://${config.host}:${config.port}`);
+		console.log(
+			`Squared ${product.version} (Node ${process.versions.node}) listening on http://${config.host}:${config.port}`,
+		);
 	});
 	scheduler.start();
 }

@@ -1,14 +1,18 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+	chmodSync,
 	copyFileSync,
 	cpSync,
 	existsSync,
+	lstatSync,
+	lutimesSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
+	utimesSync,
 	writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -19,12 +23,12 @@ const app = join(output, 'app');
 const archive = join(output, 'squared-squarecloud.zip');
 const maxUploadBytes = 100_000_000;
 
-function run(command, args, cwd = root) {
+function run(command, args, cwd = root, env = process.env) {
 	const result = spawnSync(command, args, {
 		cwd,
 		encoding: 'utf8',
 		stdio: 'inherit',
-		env: process.env,
+		env,
 		maxBuffer: 16 * 1024 * 1024,
 	});
 	if (result.error) throw result.error;
@@ -68,8 +72,10 @@ writeFileSync(
 	[
 		`DISPLAY_NAME=${displayName}`,
 		`MEMORY=${memory}`,
+		'RUNTIME=nodejs',
 		'VERSION=recommended',
 		'MAIN=src/main.js',
+		'START=npm start',
 		...(subdomain ? [`SUBDOMAIN=${subdomain}`] : []),
 		'',
 	].join('\n'),
@@ -77,7 +83,8 @@ writeFileSync(
 
 // The deploy ZIP is a conventional Node app. It has no workspace install or build step.
 run('npm', ['ci', '--omit=dev', '--ignore-scripts'], app);
-run('zip', ['-q', '-r', archive, '.'], app);
+const archiveEntries = normalizeArchiveMetadata(app);
+run('zip', ['-q', '-X', archive, ...archiveEntries], app, { ...process.env, TZ: 'UTC' });
 run('unzip', ['-tqq', archive]);
 const bytes = statSync(archive).size;
 if (bytes > maxUploadBytes) throw new Error(`Square Cloud upload limit exceeded: ${bytes} > ${maxUploadBytes} bytes`);
@@ -104,4 +111,26 @@ function removeTests(directory) {
 		if (statSync(entry).isDirectory()) removeTests(entry);
 		else if (/\.(test|spec)\.js$/.test(name)) rmSync(entry);
 	}
+}
+
+function normalizeArchiveMetadata(directory) {
+	const fixedTime = new Date('2000-01-01T00:00:00.000Z');
+	const entries = [];
+	for (const name of readdirSync(directory)) {
+		const path = join(directory, name);
+		const entry = lstatSync(path);
+		if (entry.isSymbolicLink()) {
+			lutimesSync(path, fixedTime, fixedTime);
+			entries.push(name);
+		} else if (entry.isDirectory()) {
+			chmodSync(path, 0o755);
+			utimesSync(path, fixedTime, fixedTime);
+			entries.push(...normalizeArchiveMetadata(path).map((child) => join(name, child)));
+		} else {
+			chmodSync(path, 0o644);
+			utimesSync(path, fixedTime, fixedTime);
+			entries.push(name);
+		}
+	}
+	return entries.sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
 }

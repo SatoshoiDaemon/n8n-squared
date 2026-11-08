@@ -100,6 +100,33 @@ test('HTTP editor uses first-admin setup and secure sessions for workflow operat
 		assert.equal(created.status, 201);
 		const workflow = await created.json();
 
+		const n8nImport = {
+			id: 'n8n-import-1', name: 'Imported n8n graph', active: true,
+			settings: { executionOrder: 'v1', preservedSetting: true }, tags: [{ id: 'tag-1', name: 'kept' }],
+		nodes: [
+			{ id: 'start', name: 'Manual Trigger', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, position: [0, 0], parameters: {} },
+			{ id: 'unknown', name: 'Future node', type: 'community.futureNode', typeVersion: 4, position: [200, 0], parameters: { custom: 'kept' }, unknownNodeField: 7 },
+		],
+		connections: { 'Manual Trigger': { main: [[{ node: 'Future node', type: 'main', index: 0 }]] } },
+	};
+	const imported = await fetch(`${base}/api/workflows/import`, {
+		method: 'POST', headers: auth, body: JSON.stringify(n8nImport),
+	});
+	assert.equal(imported.status, 201);
+	assert.equal((await imported.json()).id, n8nImport.id);
+	assert.deepEqual(await fetch(`${base}/api/workflows/${n8nImport.id}/export`, { headers: auth }).then((response) => response.json()), n8nImport);
+	const duplicateImport = await fetch(`${base}/api/workflows/import`, {
+		method: 'POST', headers: auth, body: JSON.stringify({ ...n8nImport, name: 'Must not replace original' }),
+	});
+	assert.equal(duplicateImport.status, 409);
+	assert.deepEqual(await fetch(`${base}/api/workflows/${n8nImport.id}/export`, { headers: auth }).then((response) => response.json()), n8nImport);
+	const concurrentImport = { ...n8nImport, id: 'n8n-import-concurrent', name: 'Concurrent import' };
+	const concurrentResults = await Promise.all([1, 2].map(() => fetch(`${base}/api/workflows/import`, {
+		method: 'POST', headers: auth, body: JSON.stringify(concurrentImport),
+	})));
+	assert.deepEqual(concurrentResults.map((response) => response.status).sort(), [201, 409]);
+	assert.deepEqual(await fetch(`${base}/api/workflows/${concurrentImport.id}/export`, { headers: auth }).then((response) => response.json()), concurrentImport);
+
 		const crossOrigin = await fetch(`${base}/api/workflows`, {
 			method: 'POST',
 			headers: { ...auth, origin: 'https://attacker.example' },

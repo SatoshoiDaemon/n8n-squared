@@ -9,16 +9,23 @@
 	"scripts": {
 		"start": "node src/main.js",
 		"dev": "node --watch src/main.js",
-		"build": "node scripts/squared/check-runtime.mjs",
+		"build": "node scripts/squared/check-runtime.mjs && npm run typecheck",
 		"build:deploy": "npm run package:squarecloud",
 		"package:squarecloud": "node scripts/squared/package-squarecloud.mjs",
 		"verify:squarecloud": "node scripts/squared/verify-squarecloud.mjs",
 		"smoke:squarecloud": "node scripts/squared/smoke-squarecloud.mjs",
 		"deploy:squarecloud": "node scripts/squared/deploy-squarecloud.mjs",
 		"inspect:squarecloud": "node scripts/squared/inspect-squarecloud.mjs",
+		"compatibility:matrix": "node scripts/compatibility/generate-node-matrix.mjs",
+		"compatibility:benchmark": "node --expose-gc scripts/compatibility/benchmark-engine.mjs",
+		"typecheck": "tsc --project tsconfig.squared.json",
 		"test": "node --test src/*.test.js src/**/*.test.js"
 	},
 	"dependencies": {
 		"pg": "^8.16.3"
+	},
+	"devDependencies": {
+		"@types/node": "^24.19.2",
+		"typescript": "^5.9.3"
 	}
 }

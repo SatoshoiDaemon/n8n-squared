@@ -10,6 +10,7 @@ export interface N8nExpressionContext {
 	priorNodeItems?: Record<string, ExpressionItem[]>;
 	execution?: Record<string, unknown>;
 	workflow?: Record<string, unknown>;
+	credentials?: Record<string, unknown>;
 	clock?: () => Date;
 }
 
@@ -361,6 +362,7 @@ function resolveIdentifier(name: string, context: N8nExpressionContext): unknown
 		}
 		case '$execution': return context.execution ?? {};
 		case '$workflow': return context.workflow ?? {};
+		case '$credentials': return context.credentials ?? {};
 		case '$now': return (context.clock ?? (() => new Date()))().toISOString();
 		default: throw new Error(`Unknown expression variable: ${name}`);
 	}

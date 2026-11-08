@@ -7,7 +7,7 @@ import { RequestError } from '../errors.js';
 
 const assets = new URL('../assets/', import.meta.url);
 
-export function createHttpServer({ config, store, workflows, vault, auth }) {
+export function createHttpServer({ config, store, workflows, vault, auth, n8nNodeRuntime }) {
 	const authAttempts = new Map();
 	const server = createServer(async (request, response) => {
 		try {
@@ -51,6 +51,15 @@ export function createHttpServer({ config, store, workflows, vault, auth }) {
 			const authenticatedByToken = authorized(request.headers.authorization, config.accessToken);
 			if (!authenticatedBySession && !authenticatedByToken) return sendJson(response, 401, { error: 'Authentication required' });
 			if (authenticatedBySession && isMutation(request.method)) ensureSameOrigin(request);
+			if (request.method === 'GET' && url.pathname === '/api/node-types') {
+				const catalog = n8nNodeRuntime?.getSnapshot();
+				return sendJson(response, 200, catalog ?? { packages: [], nodes: [], credentials: [] });
+			}
+			const nodeDescriptionMatch = url.pathname.match(/^\/api\/node-types\/(.+)\/description$/);
+			if (nodeDescriptionMatch && request.method === 'GET') {
+				if (!n8nNodeRuntime) throw httpError(404, 'n8n node packages are not configured');
+				return sendJson(response, 200, await n8nNodeRuntime.loadDescription(decodeURIComponent(nodeDescriptionMatch[1])));
+			}
 
 			if (request.method === 'GET' && url.pathname === '/api/workflows') {
 				return sendJson(response, 200, await workflows.list());

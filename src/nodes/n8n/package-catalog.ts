@@ -13,6 +13,7 @@ export interface NodeCompatibilityState {
 
 export interface CatalogNode {
 	packageName: string;
+	packageVersion: string;
 	license: string;
 	enterpriseRestricted: boolean;
 	nodeType: string;
@@ -26,13 +27,17 @@ export interface CatalogNode {
 	compatibility: NodeCompatibilityState;
 	knownFailures: string[];
 	description?: Record<string, unknown>;
+	metadata?: Record<string, unknown>;
+	validationEvidence?: Array<{ typeVersion: number; test: string; status: 'passed' }>;
 }
 
 export interface CatalogCredential {
 	packageName: string;
+	packageVersion: string;
 	license: string;
 	enterpriseRestricted: boolean;
 	credentialName: string;
+	credentialType: string;
 	manifestPath: string;
 	descriptionPath: string;
 	loaded: boolean;
@@ -51,9 +56,8 @@ interface PackageManifest {
 
 /**
  * Reads generated n8n package manifests and JSON descriptions without importing
- * package code. That makes nodes discoverable/configurable while keeping
- * community JavaScript out of the Squared process until an isolated adapter is
- * available.
+ * package code. Static parameter metadata can make a node configurable, while
+ * only an imported runtime class is marked loaded.
  */
 export class N8nPackageCatalog {
 	private readonly nodes = new Map<string, CatalogNode>();
@@ -81,9 +85,10 @@ export class N8nPackageCatalog {
 				const descriptionPath = safePath.replace(/\.node\.ee\.js$/i, '.node.ee.json').replace(/\.node\.js$/i, '.node.json');
 				const item: CatalogNode = {
 					packageName,
+					packageVersion: manifest.version ?? 'unknown',
 					license: enterpriseRestricted ? 'LicenseRef-n8n-enterprise' : manifest.license ?? 'unknown',
 					enterpriseRestricted,
-					nodeType: '',
+					nodeType: `${packageName}.${lowerFirst(basenameWithoutExtension(path))}`,
 					nodeName: basenameWithoutExtension(path),
 					manifestPath: relative(resolve(this.packagesDirectory), safePath),
 					descriptionPath,
@@ -93,7 +98,7 @@ export class N8nPackageCatalog {
 					interfacesUsed: [],
 					compatibility: { discovered: true, loaded: false, configurable: false, executable: false, validated: false },
 					knownFailures: [
-						'Node execution module is not imported; an isolated n8n node adapter has not been implemented.',
+						'Node code is discovered but has not been loaded into the runtime.',
 						...(enterpriseRestricted ? ['Enterprise-restricted .ee. source is excluded from Squared distribution and metadata loading.'] : []),
 					],
 				};
@@ -107,6 +112,8 @@ export class N8nPackageCatalog {
 					license: enterpriseRestricted ? 'LicenseRef-n8n-enterprise' : manifest.license ?? 'unknown',
 					enterpriseRestricted,
 					credentialName: basenameWithoutExtension(path),
+					credentialType: lowerFirst(basenameWithoutExtension(path)),
+					packageVersion: manifest.version ?? 'unknown',
 					manifestPath: relative(resolve(this.packagesDirectory), safePath),
 					descriptionPath: safePath.replace(/\.credentials\.ee\.js$/i, '.credentials.ee.json').replace(/\.credentials\.js$/i, '.credentials.json'),
 					loaded: false,
@@ -131,15 +138,16 @@ export class N8nPackageCatalog {
 				continue;
 			}
 			const payload = asObject(description.node) ?? description;
-			node.description = payload;
-			node.nodeType = typeof payload.name === 'string' ? payload.name : `${node.packageName}.${node.nodeName}`;
-			node.nodeName = typeof payload.displayName === 'string' ? payload.displayName : node.nodeName;
+			node.metadata = description;
+			// The .node.json file shipped in current n8n packages is editor/search
+			// metadata. It is not the executable INodeTypeDescription.
+			const declaredType = typeof description.node === 'string' ? description.node : undefined;
+			node.nodeType = declaredType ?? (typeof payload.name === 'string' ? payload.name : `${node.packageName}.${node.nodeName}`);
 			node.version = parseVersion(payload.version ?? payload.defaultVersion);
 			node.executionType = classifyExecutionType(payload);
-			node.compatibility.loaded = true;
 			node.compatibility.configurable = Array.isArray(payload.properties);
+			if (!node.compatibility.configurable) node.knownFailures.push('Static node metadata has no parameter properties array.');
 			node.knownFailures = node.knownFailures.filter((failure) => failure !== 'Generated node description JSON is missing or unreadable.');
-			if (!node.compatibility.configurable) node.knownFailures.push('Node description has no properties array.');
 		}
 		for (const credential of this.credentials.values()) {
 			if (credential.enterpriseRestricted) continue;
@@ -153,14 +161,59 @@ export class N8nPackageCatalog {
 		return { nodes: [...this.nodes.values()], credentials: [...this.credentials.values()] };
 	}
 
-	/**
-	 * Refuses to mark executable nodes until package code can run in a properly
-	 * isolated process. Metadata visibility is not executable compatibility.
-	 */
-	assertExecutable(nodeType: string): never {
+	markCredentialLoaded(credentialType: string, description: Record<string, unknown>): void {
+		const credential = [...this.credentials.values()].find((item) => item.credentialType === credentialType);
+		if (!credential) return;
+		credential.credentialType = typeof description.name === 'string' ? description.name : credential.credentialType;
+		credential.description = description;
+		credential.loaded = true;
+		credential.configurable = Array.isArray(description.properties);
+		credential.knownFailures = credential.configurable ? [] : ['Runtime credential description has no properties array.'];
+	}
+
+	markRuntimeLoaded(
+		nodeType: string,
+		description: Record<string, unknown>,
+		executionType: CatalogNode['executionType'],
+		interfacesUsed: string[],
+		executable: boolean,
+		supportedVersions?: number[],
+	): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.description = description;
+		node.version = supportedVersions?.length ? [...supportedVersions] : parseVersion(description.version ?? description.defaultVersion);
+		node.executionType = executionType;
+		node.interfacesUsed = [...new Set(interfacesUsed)].sort();
+		node.compatibility.loaded = true;
+		node.compatibility.configurable = Array.isArray(description.properties);
+		node.compatibility.executable = executable;
+		node.knownFailures = node.knownFailures.filter((failure) => ![
+			'Node code is discovered but has not been loaded into the runtime.',
+			'Static node metadata has no parameter properties array.',
+			'Node description has no properties array.',
+			'No successful node execution has exercised this node version against Squared contracts yet.',
+		].includes(failure));
+		if (!node.compatibility.configurable) node.knownFailures.push('Runtime node description has no properties array.');
+		if (!executable) node.knownFailures.push('No successful node execution has exercised this node version against Squared contracts yet.');
+	}
+
+	markValidated(nodeType: string, typeVersion: number, test: string): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node || !node.compatibility.executable) throw new Error(`Cannot validate node before its runtime contract is executable: ${nodeType}`);
+		const evidence = node.validationEvidence ?? [];
+		if (!evidence.some((item) => item.typeVersion === typeVersion && item.test === test)) {
+			evidence.push({ typeVersion, test, status: 'passed' });
+		}
+		node.validationEvidence = evidence;
+		node.compatibility.validated = true;
+	}
+
+	assertExecutable(nodeType: string): CatalogNode {
 		const entry = [...this.nodes.values()].find((node) => node.nodeType === nodeType);
 		if (!entry) throw new Error(`Node type was not discovered: ${nodeType}`);
-		throw new Error(`Node ${nodeType} is not executable: Squared has no isolated n8n node process`);
+		if (!entry.compatibility.executable) throw new Error(`Node ${nodeType} has not passed runtime loading and execution-contract checks`);
+		return entry;
 	}
 
 	snapshot(): { packages: string[]; nodes: CatalogNode[]; credentials: CatalogCredential[] } {
@@ -206,6 +259,8 @@ function basenameWithoutExtension(path: string): string {
 	const file = path.split(/[\\/]/).at(-1) ?? path;
 	return file.replace(/\.(?:node|credentials)(?:\.ee)?\.js$/i, '').replace(/\.js$/i, '');
 }
+
+function lowerFirst(value: string): string { return value ? value[0]!.toLowerCase() + value.slice(1) : value; }
 
 function isEnterpriseSourcePath(path: string): boolean {
 	return path.split(/[\\/]/).some((part) => /\.ee(?:\.|$)/i.test(part));

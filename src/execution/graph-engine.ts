@@ -1,5 +1,6 @@
 import { evaluateN8nExpression, resolveParameterTree, type ExpressionItem, type N8nExpressionContext } from '../expressions/n8n-expression.ts';
 import { buildWorkflowGraph, type WorkflowConnection, type WorkflowDocument, type WorkflowGraph, type WorkflowNodeDocument } from '../workflows/n8n-format.ts';
+import { extname } from 'node:path';
 
 export interface NodeExecutionData extends ExpressionItem {
 	json: Record<string, unknown>;
@@ -17,9 +18,31 @@ export interface GraphNodeContext {
 	readonly workflow: WorkflowDocument;
 	readonly signal: AbortSignal;
 	getInputData(inputIndex?: number, connectionType?: string): NodeExecutionData[];
-	getNodeParameter<T = unknown>(parameterName: string, itemIndex?: number, fallbackValue?: T): T;
-	evaluateExpression(expression: string, itemIndex?: number): unknown;
+	getNodeParameter<T = unknown>(parameterName: string, itemIndex?: number, fallbackValue?: T, options?: NodeParameterOptions): T;
+	evaluateExpression(expression: string, itemIndex?: number, fallbackValue?: unknown, throwOnMissing?: boolean): unknown;
+	getNode(): WorkflowNodeDocument;
+	getWorkflow(): WorkflowDocument;
+	getMode(): GraphNodeContext['mode'];
+	getExecutionId(): string;
+	getTimezone(): string;
+	getWorkflowSettings(): Record<string, unknown>;
+	getWorkflowStaticData(type: string): Record<string, unknown>;
+	continueOnFail(): boolean;
+	getExecutionCancelSignal(): AbortSignal;
+	getContext(type: 'flow' | 'node'): Record<string, unknown>;
+	sendMessageToUI(...args: unknown[]): void;
+	prepareOutputData<T extends NodeExecutionData[]>(items: T, inputIndex?: number): Promise<[T]>;
+	readonly helpers: Record<string, (...args: any[]) => any>;
+	readonly logger: Record<string, (...args: unknown[]) => void>;
 	getCredentials(credentialType: string): Promise<Record<string, unknown>>;
+}
+
+export interface NodeParameterOptions {
+	rawExpressions?: boolean;
+	extractValue?: boolean;
+	ensureType?: string;
+	skipValidation?: boolean;
+	[key: string]: unknown;
 }
 
 export interface NodeAdapter {
@@ -71,6 +94,8 @@ export interface GraphExecutionResult {
 
 export class NodeAdapterRegistry {
 	private readonly adapters = new Map<string, Map<number, NodeAdapter>>();
+	private readonly loaders = new Map<string, () => Promise<NodeAdapter>>();
+	private readonly pendingLoads = new Map<string, Promise<NodeAdapter>>();
 
 	register(adapter: NodeAdapter): void {
 		if (!adapter.type || adapter.versions.length === 0) throw new Error('Node adapters need a type and at least one version');
@@ -81,10 +106,39 @@ export class NodeAdapterRegistry {
 			versions.set(version, adapter);
 		}
 		this.adapters.set(adapter.type, versions);
+		this.loaders.delete(adapter.type);
+	}
+
+	registerLazy(type: string, loader: () => Promise<NodeAdapter>): void {
+		if (!type || typeof loader !== 'function') throw new Error('Lazy node adapters need a type and loader');
+		if (this.loaders.has(type) || this.adapters.has(type)) throw new Error(`Adapter already registered for ${type}`);
+		this.loaders.set(type, loader);
 	}
 
 	get(type: string, version: number): NodeAdapter | undefined {
 		return this.adapters.get(type)?.get(version);
+	}
+
+	async resolve(type: string, version: number): Promise<NodeAdapter | undefined> {
+		const existing = this.get(type, version);
+		if (existing) return existing;
+		const loader = this.loaders.get(type);
+		if (!loader) return undefined;
+		let pending = this.pendingLoads.get(type);
+		if (!pending) {
+			pending = loader();
+			this.pendingLoads.set(type, pending);
+		}
+		try {
+			const adapter = await pending;
+			if (!this.adapters.has(type)) this.register(adapter);
+			return this.get(type, version);
+		} catch (error) {
+			this.loaders.delete(type);
+			throw error;
+		} finally {
+			this.pendingLoads.delete(type);
+		}
 	}
 
 	versions(type: string): number[] {
@@ -98,7 +152,7 @@ export class NodeAdapterRegistry {
  * version-specific adapters, and the legacy Squared linear format.
  *
  * Cycles, wait/resume, trigger registration, non-main AI connection types, and
- * the complete n8n helper/context API are rejected or left to a future adapter.
+ * n8n helper/context methods not implemented by the package adapter fail explicitly.
  */
 export class GraphExecutionEngine {
 	private readonly limits: Required<GraphEngineLimits>;
@@ -126,6 +180,7 @@ export class GraphExecutionEngine {
 		const mode = request.mode ?? 'manual';
 		const nodeRuns: NodeRunRecord[] = [];
 		const outputsByNode = new Map<string, Record<string, NodeExecutionData[][]>>();
+		const contextData = new Map<string, Record<string, unknown>>();
 		let workflowId = typeof graph.document.id === 'string' ? graph.document.id : undefined;
 
 		try {
@@ -179,7 +234,7 @@ export class GraphExecutionEngine {
 				}
 
 				const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
-				const adapter = this.registry.get(node.type, version);
+				const adapter = await this.registry.resolve(node.type, version);
 				if (!adapter) {
 					const supported = this.registry.versions(node.type);
 					const versionHint = supported.length ? `; supported versions: ${supported.join(', ')}` : '';
@@ -192,6 +247,7 @@ export class GraphExecutionEngine {
 					outputsByNode,
 					executionId,
 					mode,
+					contextData,
 					credentialProvider: this.credentialProvider,
 				});
 
@@ -280,9 +336,10 @@ function createNodeContext(args: {
 	outputsByNode: Map<string, Record<string, NodeExecutionData[][]>>;
 	executionId: string;
 	mode: GraphNodeContext['mode'];
+	contextData: Map<string, Record<string, unknown>>;
 	credentialProvider?: CredentialProvider;
 }): GraphNodeContext {
-	const { graph, node, inputPorts, outputsByNode, executionId, mode, credentialProvider } = args;
+	const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, credentialProvider } = args;
 	const abortController = new AbortController();
 	const flattenInputs = inputPorts.flat();
 	const priorNodeItems = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, (data.main ?? []).flat()]));
@@ -295,12 +352,23 @@ function createNodeContext(args: {
 	});
 	const parameterAtPath = (path: string): unknown => {
 		let value: unknown = node.parameters ?? {};
-		for (const key of path.split('.')) {
+		const keys = path.match(/[^.[\]]+|\[(?:\d+|(['"])(.*?)\1)\]/g)?.map((part) => part.startsWith('[')
+			? part.slice(1, -1).replace(/^(['"])(.*)\1$/, '$2')
+			: part) ?? [];
+		for (const key of keys) {
 			if (!key || ['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error(`Invalid node parameter path: ${path}`);
 			if (typeof value !== 'object' || value === null) return undefined;
 			value = (value as Record<string, unknown>)[key];
 		}
 		return value;
+	};
+	const loadCredentials = async (credentialType: string) => {
+		const reference = node.credentials?.[credentialType];
+		if (!reference) throw new Error(`Node ${node.name} has no ${credentialType} credential reference`);
+		if (!credentialProvider) throw new Error('Credential provider is not configured');
+		const credential = await credentialProvider(reference, credentialType, node);
+		if (!credential) throw new Error(`Credential ${reference.name} was not found`);
+		return credential;
 	};
 	return {
 		executionId,
@@ -312,23 +380,239 @@ function createNodeContext(args: {
 			if (connectionType !== 'main') throw new Error(`Input connection type ${connectionType} is not supported by the graph engine`);
 			return inputPorts[inputIndex] ?? [];
 		},
-		getNodeParameter<T = unknown>(parameterName: string, itemIndex = 0, fallbackValue?: T): T {
+		getNodeParameter<T = unknown>(parameterName: string, itemIndex = 0, fallbackValue?: T, options: NodeParameterOptions = {}): T {
 			const value = parameterAtPath(parameterName);
-			if (value === undefined) return fallbackValue as T;
+			if (value === undefined) {
+				if (fallbackValue !== undefined) return fallbackValue;
+				throw new Error(`Could not get parameter "${parameterName}"`);
+			}
+			if (options.rawExpressions) return value as T;
 			return resolveParameterTree(value, baseContext(itemIndex)) as T;
 		},
-		evaluateExpression(expression: string, itemIndex = 0) {
-			return evaluateN8nExpression(expression, baseContext(itemIndex));
+		evaluateExpression(expression: string, itemIndex = 0, fallbackValue?: unknown, throwOnMissing = true) {
+			try {
+				return evaluateN8nExpression(expression, baseContext(itemIndex));
+			} catch (error) {
+				if (throwOnMissing) throw error;
+				return fallbackValue;
+			}
 		},
-		async getCredentials(credentialType: string) {
-			const reference = node.credentials?.[credentialType];
-			if (!reference) throw new Error(`Node ${node.name} has no ${credentialType} credential reference`);
-			if (!credentialProvider) throw new Error('Credential provider is not configured');
-			const credential = await credentialProvider(reference, credentialType, node);
-			if (!credential) throw new Error(`Credential ${reference.name} was not found`);
-			return credential;
+		getNode() { return node; },
+		getWorkflow() { return graph.document; },
+		getMode() { return mode; },
+		getExecutionId() { return executionId; },
+		getTimezone() { return typeof graph.document.settings?.timezone === 'string' ? graph.document.settings.timezone : 'UTC'; },
+		getWorkflowSettings() { return graph.document.settings ?? {}; },
+		getWorkflowStaticData(type: string) { return contextDataFor(type); },
+		continueOnFail() { return node.continueOnFail === true || node.onError === 'continueErrorOutput' || node.onError === 'continueRegularOutput'; },
+		getExecutionCancelSignal() { return abortController.signal; },
+		getContext(type: 'flow' | 'node') {
+			const key = type === 'flow' ? 'flow' : `node:${node.id}`;
+			let value = contextData.get(key);
+			if (!value) { value = {}; contextData.set(key, value); }
+			return value;
+		},
+		sendMessageToUI() {},
+		async prepareOutputData<T extends NodeExecutionData[]>(items: T) { return [items]; },
+		helpers: createBasicHelpers(() => flattenInputs, loadCredentials),
+		logger: { debug() {}, info() {}, warn() {}, error() {} },
+		async getCredentials(credentialType: string) { return loadCredentials(credentialType); },
+	};
+
+	function contextDataFor(type: string): Record<string, unknown> {
+		const key = type === 'flow' || type === 'global' ? 'flow' : `node:${node.id}`;
+		let value = contextData.get(key);
+		if (!value) { value = {}; contextData.set(key, value); }
+		return value;
+	}
+}
+
+function createBasicHelpers(
+	getInputs: () => NodeExecutionData[],
+	getCredentials: (credentialType: string) => Promise<Record<string, unknown>>,
+): GraphNodeContext['helpers'] {
+	const getBinaryData = (itemIndex: number, propertyName: string) => {
+		const binary = getInputs()[itemIndex]?.binary?.[propertyName];
+		if (!binary) throw new Error(`Binary data property ${propertyName} was not found on item ${itemIndex}`);
+		return binary;
+	};
+	return {
+		returnJsonArray(items: unknown | unknown[]) {
+			return (Array.isArray(items) ? items : [items]).map((item) => ({ json: isObject(item) ? item : { value: item } }));
+		},
+		copyInputItems(items: NodeExecutionData[], properties: string[]) {
+			return items.map((item) => ({ json: Object.fromEntries(properties.filter((key) => Object.hasOwn(item.json, key)).map((key) => [key, item.json[key]])) }));
+		},
+		normalizeItems(items: unknown[]) {
+			return items.map((item) => normalizeItem(item));
+		},
+		constructExecutionMetaData(items: NodeExecutionData[], { itemData }: { itemData?: Array<{ item: number; input?: number }> } = {}) {
+			return items.map((item, index) => ({ ...item, pairedItem: itemData?.[index] ?? { item: index } }));
+		},
+		createDeferredPromise() {
+			let resolve!: (value: unknown) => void;
+			let reject!: (reason?: unknown) => void;
+			const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+			return { promise, resolve, reject };
+		},
+		httpRequest(options: Record<string, unknown>) { return executeHttpRequest(options); },
+		request(options: Record<string, unknown>) { return executeHttpRequest(options); },
+		async httpRequestWithAuthentication(credentialType: string, options: Record<string, unknown>) {
+			const credentials = await getCredentials(credentialType);
+			return executeHttpRequest(applyGenericHttpAuthentication(options, credentials));
+		},
+		async requestWithAuthentication(credentialType: string, options: Record<string, unknown>) {
+			const credentials = await getCredentials(credentialType);
+			return executeHttpRequest(applyGenericHttpAuthentication(options, credentials));
+		},
+		async requestOAuth2(credentialType: string, options: Record<string, unknown>, oauthOptions: Record<string, unknown> = {}) {
+			const credentials = await getCredentials(credentialType);
+			const token = findOAuthAccessToken(credentials);
+			if (!token) throw new Error(`Credential ${credentialType} has no OAuth2 access token`);
+			const headers = { ...(isObject(options.headers) ? options.headers : {}) };
+			headers.authorization = `${typeof oauthOptions.tokenType === 'string' ? oauthOptions.tokenType : 'Bearer'} ${token}`;
+			return executeHttpRequest({ ...options, headers });
+		},
+		async requestOAuth1() { throw new Error('Squared does not implement OAuth 1 request signing yet'); },
+		assertBinaryData(itemIndex: number, propertyName: string) {
+			return getBinaryData(itemIndex, propertyName);
+		},
+		async getBinaryDataBuffer(itemIndex: number, propertyName: string) {
+			const metadata = getBinaryData(itemIndex, propertyName) as { data?: string; dataId?: string; mimeType?: string };
+			if (typeof metadata.data !== 'string') throw new Error('Squared does not have a binary-data store configured for this n8n item');
+			return Buffer.from(metadata.data, 'base64');
+		},
+		async prepareBinaryData(value: Buffer | Uint8Array | ArrayBuffer | string, fileName?: string, mimeType?: string) {
+			const buffer = typeof value === 'string' ? Buffer.from(value) : Buffer.from(value instanceof ArrayBuffer ? new Uint8Array(value) : value);
+			const resolvedMimeType = mimeType || 'application/octet-stream';
+			const resolvedFileExtension = extname(fileName ?? '').replace(/^\./, '') || extensionForMimeType(resolvedMimeType);
+			const resolvedFileName = fileName || (resolvedFileExtension ? `file.${resolvedFileExtension}` : 'file');
+			return {
+				data: buffer.toString('base64'),
+				fileName: resolvedFileName,
+				fileExtension: resolvedFileExtension,
+				fileSize: `${buffer.byteLength} B`,
+				mimeType: resolvedMimeType,
+				fileType: resolvedMimeType.split('/')[0] || 'application',
+			};
+		},
+		detectBinaryEncoding(buffer: Buffer) {
+			return buffer.toString('utf8');
 		},
 	};
+}
+
+function extensionForMimeType(mimeType: string): string {
+	const commonExtensions: Record<string, string> = {
+		'application/json': 'json',
+		'application/pdf': 'pdf',
+		'application/zip': 'zip',
+		'text/csv': 'csv',
+		'text/html': 'html',
+		'text/plain': 'txt',
+		'text/xml': 'xml',
+	};
+	return commonExtensions[mimeType.toLowerCase()] ?? '';
+}
+
+async function executeHttpRequest(options: Record<string, unknown>): Promise<unknown> {
+	const address = options.uri ?? options.url;
+	if (typeof address !== 'string' || !address) throw new Error('HTTP helper needs a non-empty uri or url');
+	const url = new URL(address);
+	const query = (options.qs ?? options.query) as Record<string, unknown> | undefined;
+	if (query && typeof query === 'object') {
+		for (const [key, rawValue] of Object.entries(query)) {
+			url.searchParams.delete(key);
+			for (const value of Array.isArray(rawValue) ? rawValue : [rawValue]) {
+				if (value !== undefined && value !== null) url.searchParams.append(key, String(value));
+			}
+		}
+	}
+	const headers = new Headers();
+	const inputHeaders = options.headers;
+	if (inputHeaders && typeof inputHeaders === 'object') {
+		for (const [key, value] of Object.entries(inputHeaders)) {
+			if (value !== undefined && value !== null) headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
+		}
+	}
+	let body: BodyInit | undefined;
+	const method = typeof options.method === 'string' ? options.method.toUpperCase() : 'GET';
+	if (options.form && typeof options.form === 'object') {
+		body = new URLSearchParams(Object.entries(options.form as Record<string, unknown>).map(([key, value]) => [key, String(value)]));
+		if (!headers.has('content-type')) headers.set('content-type', 'application/x-www-form-urlencoded');
+	} else if (options.formData && typeof options.formData === 'object') {
+		const formData = new FormData();
+		for (const [key, value] of Object.entries(options.formData as Record<string, unknown>)) {
+			if (typeof value === 'string' || value instanceof Blob) formData.append(key, value);
+			else if (value !== undefined && value !== null) formData.append(key, String(value));
+		}
+		body = formData;
+	} else if (options.body !== undefined && options.body !== null && !['GET', 'HEAD'].includes(method)) {
+		if (typeof options.body === 'string' || options.body instanceof Blob || options.body instanceof FormData) {
+			body = options.body;
+		} else if (options.body instanceof Uint8Array) {
+			body = new Blob([Uint8Array.from(options.body)]);
+		} else {
+			body = JSON.stringify(options.body);
+			if (!headers.has('content-type')) headers.set('content-type', options.json === false ? 'application/x-www-form-urlencoded' : 'application/json');
+		}
+	}
+	const timeout = Number(options.timeout);
+	const signal = Number.isFinite(timeout) && timeout > 0 ? AbortSignal.timeout(timeout) : undefined;
+	const response = await fetch(url, { method, headers, body, signal, redirect: options.followRedirect === false ? 'manual' : 'follow' });
+	const bytes = Buffer.from(await response.arrayBuffer());
+	const contentType = response.headers.get('content-type') ?? '';
+	let responseBody: unknown = bytes.toString(typeof options.encoding === 'string' ? options.encoding as BufferEncoding : 'utf8');
+	if (options.encoding === null) responseBody = bytes;
+	else if (options.json === true || /(?:application|text)\/(?:[^;]+\+)?json\b/i.test(contentType)) {
+		const text = bytes.toString('utf8');
+		responseBody = text ? JSON.parse(text) : null;
+	}
+	if (!response.ok && options.simple !== false) {
+		const error = new Error(`Request failed with status code ${response.status}`) as Error & { statusCode: number; response: unknown };
+		error.statusCode = response.status;
+		error.response = { statusCode: response.status, statusMessage: response.statusText, headers: responseHeaders(response.headers), body: responseBody };
+		throw error;
+	}
+	if (options.resolveWithFullResponse === true || options.returnFullResponse === true) {
+		return { statusCode: response.status, statusMessage: response.statusText, headers: responseHeaders(response.headers), body: responseBody };
+	}
+	return responseBody;
+}
+
+function responseHeaders(headers: Headers): Record<string, string> {
+	const result: Record<string, string> = {};
+	headers.forEach((value, key) => { result[key] = value; });
+	return result;
+}
+
+function applyGenericHttpAuthentication(options: Record<string, unknown>, credentials: Record<string, unknown>): Record<string, unknown> {
+	const authenticated: Record<string, unknown> = { ...options, headers: { ...(isObject(options.headers) ? options.headers : {}) } };
+	const headers = authenticated.headers as Record<string, unknown>;
+	if (typeof credentials.header === 'string' && typeof credentials.value === 'string') {
+		headers[credentials.header] = credentials.value;
+	} else if (typeof credentials.name === 'string' && typeof credentials.value === 'string') {
+		if (credentials.in === 'query') {
+			const qs: Record<string, unknown> = isObject(options.qs) ? { ...options.qs } : {};
+			qs[credentials.name] = credentials.value;
+			authenticated.qs = qs;
+		} else headers[credentials.name] = credentials.value;
+	} else if (typeof credentials.user === 'string' && typeof credentials.password === 'string') {
+		headers.authorization = `Basic ${Buffer.from(`${credentials.user}:${credentials.password}`).toString('base64')}`;
+	} else if (findOAuthAccessToken(credentials)) {
+		headers.authorization = `Bearer ${findOAuthAccessToken(credentials)}`;
+	} else if (isObject(credentials.headers)) {
+		Object.assign(headers, credentials.headers);
+	} else {
+		throw new Error('Squared cannot adapt this n8n credential schema for an HTTP request yet');
+	}
+	return authenticated;
+}
+
+function findOAuthAccessToken(credentials: Record<string, unknown>): string | undefined {
+	const tokenData = isObject(credentials.oauthTokenData) ? credentials.oauthTokenData : {};
+	const token = credentials.accessToken ?? credentials.token ?? tokenData.access_token;
+	return typeof token === 'string' && token ? token : undefined;
 }
 
 function selectStartNode(graph: WorkflowGraph, requested?: string): WorkflowNodeDocument {

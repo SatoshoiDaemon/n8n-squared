@@ -12,13 +12,14 @@ npm-debug.log*
 yarn.lock
 google-generated-credentials.json
 _START_PACKAGE
-.env
+.env*
 .env.codex
 .env.local
 .env.eval
 .vscode/*
 .idea
 nodelinter.config.json
+**/package-lock.json
 packages/**/.turbo
 .turbo
 .stryker-tmp/

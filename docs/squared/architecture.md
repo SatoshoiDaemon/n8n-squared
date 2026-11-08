@@ -14,15 +14,27 @@ npm start
       ├─ src/persistence/persistent-secrets.js chave e código de bootstrap persistidos
       ├─ src/auth/service.js              primeiro administrador, senha e sessões
       ├─ src/http/server.js               editor, auth, API, health e webhooks
-      ├─ src/workflows/                   validação e serviço de workflows
-      ├─ src/execution/                   fila limitada e executor sequencial
-      ├─ src/nodes/                       Set, IF e HTTP Request
-      ├─ src/expressions/                 expressões de dados sem eval
+      ├─ src/workflows/                   formato legado e documentos n8n sem perda de campos
+      ├─ src/execution/                   fila atual + executor experimental em grafo (TypeScript)
+      ├─ src/nodes/                       Set, IF, HTTP Request + catálogo n8n por metadados
+      ├─ src/expressions/                 expressões legadas e subconjunto seguro n8n
       ├─ src/credentials/                 criptografia AES-256-GCM
       └─ src/triggers/                    agendamento por intervalo
 ~~~
 
 O editor estático em `src/assets/` cria workflows como uma sequência visual de nodes. Os gatilhos disponíveis são manual, webhook e intervalo. O executor limita simultaneamente o número de execuções ativas e enfileiradas. O código de workflow não é executado como JavaScript arbitrário; portanto, o node Code e extensões npm não fazem parte desta primeira fatia.
+
+## Formato de workflow e motor experimental
+
+`POST /api/workflows/import` e `GET /api/workflows/:id/export` preservam o JSON de workflow n8n, incluindo campos desconhecidos. A importação cria um novo registro e rejeita IDs duplicados; não atualiza um workflow existente. Isso não habilita a execução de nodes importados. A API de execução e o editor de produção continuam usando o executor legado.
+
+`src/workflows/n8n-format.ts` valida documentos e transforma `connections` em um grafo sem alterar o documento armazenado. `src/execution/graph-engine.ts` é um executor TypeScript isolado da produção que aceita adaptadores explicitamente registrados por versão. Nesta etapa, ele executa apenas grafos acíclicos de conexões `main`, com propagação de itens, portas, ramificações, junções, bypass de nodes desativados, retries e saídas de erro. Ciclos, canais AI e os contratos completos de `n8n-core` não estão implementados. Nenhum node oficial ou comunitário é registrado como executável.
+
+`src/nodes/n8n/package-catalog.ts` lê manifests e descrições JSON geradas de pacotes instalados, sem importar seus módulos JavaScript. A matriz gerada em [compatibility-matrix.md](compatibility-matrix.md) separa descoberta, carregamento de metadados, configuração, execução e validação. Os dados atuais representam a árvore histórica local; a instalação configurada não foi autenticada como n8n.
+
+O avaliador de expressões `src/expressions/n8n-expression.ts` é um parser seguro de subconjunto, sem `eval` ou execução dinâmica. Ele oferece variáveis e operadores comuns, mas ainda não tem o runtime completo do n8n (incluindo Luxon, todas as funções auxiliares, item linking completo e contexto de execução integral). A integração de credenciais resolve referências por ID através do vault cifrado atual; schemas de credencial, OAuth e métodos auxiliares por tipo ainda não são executados por nodes n8n.
+
+O motor TypeScript exige Node.js 24 com suporte à remoção de tipos do Node, sem etapa de compilação ou dependências TypeScript de produção. Consulte [relatório de compatibilidade](n8n-compatibility.md), [resultados diferenciais](differential-results.md), [desempenho](workflow-engine-performance.md) e [licenciamento](licensing-report.md) antes de tratar esta camada como compatibilidade executável.
 
 ## Persistência
 

@@ -5,10 +5,10 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, process.env.SQUARED_DIST_DIR || 'dist/squarecloud');
-const archive = resolve(output, 'n8n-squared-squarecloud.zip');
+const archive = resolve(output, 'squared-squarecloud.zip');
 const manifest = resolve(output, 'manifest.json');
 if (!existsSync(archive) || !existsSync(manifest)) {
-	throw new Error('Package first with pnpm build:deploy');
+	throw new Error('Package first with npm run package:squarecloud');
 }
 
 // An app ID upgrades the existing application. Without it, upload creates one.

@@ -15,13 +15,14 @@ test('catalog discovers node and credential descriptions without importing packa
 	await writeFile(join(packageDir, 'package.json'), JSON.stringify({
 		name: 'n8n-nodes-demo', version: '1.2.3', license: 'LicenseRef-n8n-sustainable-use', dependencies: { 'node-fetch': '^3.0.0' },
 		n8n: {
-			nodes: ['dist/nodes/Example/Example.node.js', 'dist/nodes/Example/ExampleEnterprise.node.ee.js', 'dist/nodes/Example/MicrosoftSharePoint.node.js'],
+			nodes: ['dist/nodes/Example/Example.node.js', 'dist/nodes/Example/ExampleEnterprise.node.ee.js', 'dist/nodes/Example/MicrosoftSharePoint.node.js', 'dist/nodes/Example/NoMetadata.node.js'],
 			credentials: ['dist/credentials/DemoApi.credentials.js'],
 		},
 	}));
 	await writeFile(join(nodeDir, 'Example.node.js'), "throw new Error('node implementation must not be imported');\n");
 	await writeFile(join(nodeDir, 'ExampleEnterprise.node.ee.js'), "throw new Error('enterprise node must not be imported');\n");
 	await writeFile(join(nodeDir, 'MicrosoftSharePoint.node.js'), "throw new Error('node implementation must not be imported');\n");
+	await writeFile(join(nodeDir, 'NoMetadata.node.js'), "throw new Error('node implementation must not be imported');\n");
 	await writeFile(join(nodeDir, 'Example.node.json'), JSON.stringify({ node: {
 		name: 'n8n-nodes-demo.example', displayName: 'Example', version: 2,
 		requestDefaults: { baseURL: 'https://example.test' }, properties: [{ name: 'resource', type: 'options' }],
@@ -40,7 +41,7 @@ test('catalog discovers node and credential descriptions without importing packa
 	try {
 		const catalog = new N8nPackageCatalog(root);
 		const discovered = await catalog.discover();
-		assert.equal(discovered.nodes.length, 3);
+		assert.equal(discovered.nodes.length, 4);
 		assert.equal(discovered.nodes[0].compatibility.discovered, true);
 		assert.equal(discovered.nodes[0].compatibility.loaded, false);
 		const loaded = await catalog.loadDescriptions();
@@ -55,6 +56,17 @@ test('catalog discovers node and credential descriptions without importing packa
 		assert.equal(enterprise.license, 'LicenseRef-n8n-enterprise');
 		assert.equal(enterprise.compatibility.loaded, false);
 		assert.equal(enterprise.description, undefined);
+		const withoutStaticMetadata = loaded.nodes.find((node) => node.nodeName === 'NoMetadata');
+		assert.equal(withoutStaticMetadata.knownFailures.includes('Generated node description JSON is missing or unreadable.'), true);
+		catalog.markRuntimeLoaded('n8n-nodes-demo.noMetadata', {
+			name: 'n8n-nodes-demo.noMetadata',
+			displayName: 'No Metadata',
+			version: 2,
+			properties: [{ name: 'resource', type: 'options' }],
+		}, 'execute', ['IExecuteFunctions'], true, [2]);
+		assert.equal(withoutStaticMetadata.compatibility.loaded, true);
+		assert.equal(withoutStaticMetadata.compatibility.configurable, true);
+		assert.equal(withoutStaticMetadata.knownFailures.includes('Generated node description JSON is missing or unreadable.'), false);
 		assert.equal(loaded.credentials[0].configurable, true);
 		assert.throws(() => catalog.assertExecutable('n8n-nodes-demo.example'), /has not passed runtime loading and execution-contract checks/);
 	} finally {

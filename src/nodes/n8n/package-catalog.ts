@@ -72,6 +72,7 @@ export class N8nPackageCatalog {
 	private readonly nodes = new Map<string, CatalogNode>();
 	private readonly credentials = new Map<string, CatalogCredential>();
 	private readonly packageNames = new Set<string>();
+	private readonly caseInsensitiveDirectoryEntries = new Map<string, Promise<string[]>>();
 	private readonly packagesDirectory: string;
 
 	constructor(packagesDirectory: string) { this.packagesDirectory = packagesDirectory; }
@@ -80,6 +81,7 @@ export class N8nPackageCatalog {
 		this.nodes.clear();
 		this.credentials.clear();
 		this.packageNames.clear();
+		this.caseInsensitiveDirectoryEntries.clear();
 		const packageDirectories = await findPackageDirectories(resolve(this.packagesDirectory));
 		for (const packageDirectory of packageDirectories) {
 			const packageJsonPath = join(packageDirectory, 'package.json');
@@ -142,7 +144,7 @@ export class N8nPackageCatalog {
 	async loadDescriptions(): Promise<{ nodes: CatalogNode[]; credentials: CatalogCredential[] }> {
 		for (const node of this.nodes.values()) {
 			if (node.enterpriseRestricted) continue;
-			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(node.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(node.descriptionPath, this.caseInsensitiveDirectoryEntries).catch(() => null);
 			if (!description) {
 				node.knownFailures = [...new Set([...node.knownFailures, 'Generated node description JSON is missing or unreadable.'])];
 				continue;
@@ -161,7 +163,7 @@ export class N8nPackageCatalog {
 		}
 		for (const credential of this.credentials.values()) {
 			if (credential.enterpriseRestricted) continue;
-			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(credential.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(credential.descriptionPath, this.caseInsensitiveDirectoryEntries).catch(() => null);
 			if (!description) continue;
 			credential.description = asObject(description.credential) ?? description;
 			credential.loaded = true;
@@ -201,6 +203,7 @@ export class N8nPackageCatalog {
 		node.compatibility.executable = executable;
 		node.knownFailures = node.knownFailures.filter((failure) => ![
 			'Node code is discovered but has not been loaded into the runtime.',
+			'Generated node description JSON is missing or unreadable.',
 			'Static node metadata has no parameter properties array.',
 			'Node description has no properties array.',
 			'No successful node execution has exercised this node version against Squared contracts yet.',
@@ -318,22 +321,27 @@ async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, 'utf8')) as T;
 }
 
-async function readJsonWithCaseInsensitiveFallback<T>(path: string): Promise<T> {
+async function readJsonWithCaseInsensitiveFallback<T>(path: string, directoryEntriesCache: Map<string, Promise<string[]>>): Promise<T> {
 	try {
 		return await readJson<T>(path);
 	} catch (error) {
-		const actualPath = await resolveCaseInsensitivePath(path).catch(() => null);
+		const actualPath = await resolveCaseInsensitivePath(path, directoryEntriesCache).catch(() => null);
 		if (!actualPath || actualPath === path) throw error;
 		return readJson<T>(actualPath);
 	}
 }
 
-async function resolveCaseInsensitivePath(path: string): Promise<string | null> {
+async function resolveCaseInsensitivePath(path: string, directoryEntriesCache: Map<string, Promise<string[]>>): Promise<string | null> {
 	const absolutePath = resolve(path);
 	const root = parse(absolutePath).root;
 	let current = root;
 	for (const segment of absolutePath.slice(root.length).split(sep).filter(Boolean)) {
-		const entries = await readdir(current).catch(() => []);
+		let entriesPromise = directoryEntriesCache.get(current);
+		if (!entriesPromise) {
+			entriesPromise = readdir(current).catch(() => []);
+			directoryEntriesCache.set(current, entriesPromise);
+		}
+		const entries = await entriesPromise;
 		const actualSegment = entries.find((entry) => entry.toLowerCase() === segment.toLowerCase());
 		if (!actualSegment) return null;
 		current = join(current, actualSegment);

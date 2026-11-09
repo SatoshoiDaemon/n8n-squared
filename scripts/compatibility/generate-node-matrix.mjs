@@ -17,6 +17,7 @@ const knownFailures = [
 	'No successful execution has yet exercised this node version against Squared contracts.',
 	'No differential execution result against an authenticated n8n reference instance is available.',
 ];
+const reuseRuntimeEvidence = process.argv.includes('--reuse-runtime-evidence');
 
 const records = [];
 const credentialPackages = [];
@@ -60,7 +61,22 @@ for (const reference of referencePackages) {
 }
 
 let runtimeEvidence = await readFile(runtimeEvidencePath, 'utf8').then(JSON.parse).catch(() => null);
-if (process.env.SQUARED_N8N_PACKAGES_DIR) {
+if (reuseRuntimeEvidence) {
+	if (!process.env.SQUARED_N8N_PACKAGES_DIR) throw new Error('--reuse-runtime-evidence requires SQUARED_N8N_PACKAGES_DIR to verify the installed package versions.');
+	if (!runtimeEvidence?.packages?.length) throw new Error('No runtime compatibility evidence is available to reuse; run npm run compatibility:validate first.');
+	for (const packageVersion of runtimeEvidence.packages) {
+		const separator = packageVersion.lastIndexOf('@');
+		if (separator <= 0 || separator === packageVersion.length - 1) throw new Error(`Runtime compatibility evidence has an invalid package version entry: ${packageVersion}.`);
+		const packageName = packageVersion.slice(0, separator);
+		const expectedVersion = packageVersion.slice(separator + 1);
+		const evidenceVersion = runtimeEvidence.nodes.find((node) => node.package === packageName)?.packageVersion;
+		if (evidenceVersion !== expectedVersion) throw new Error(`Runtime compatibility evidence has no matching version for ${packageName}.`);
+		const manifestPath = join(process.env.SQUARED_N8N_PACKAGES_DIR, ...packageName.split('/'), 'package.json');
+		const installed = JSON.parse(await readFile(manifestPath, 'utf8'));
+		if (installed.version !== expectedVersion) throw new Error(`Runtime evidence package mismatch for ${packageName}: expected ${expectedVersion}, found ${installed.version}.`);
+	}
+}
+if (process.env.SQUARED_N8N_PACKAGES_DIR && !reuseRuntimeEvidence) {
 	const probe = await runN8nBaseCompatibilityProbe(process.env.SQUARED_N8N_PACKAGES_DIR);
 	const loadState = await loadN8nPackageNodeStates(process.env.SQUARED_N8N_PACKAGES_DIR);
 	const executionEvidence = new Map(probe.nodes.map((node) => [node.nodeType, node]));
@@ -72,6 +88,7 @@ if (process.env.SQUARED_N8N_PACKAGES_DIR) {
 			.map((stage) => [stage, Boolean(node.compatibility[stage] || validationCompatibility[stage])]));
 		const staleValidationFailures = new Set([
 			'Node code is discovered but has not been loaded into the runtime.',
+			'Generated node description JSON is missing or unreadable.',
 			'No successful node execution has exercised this node version against Squared contracts yet.',
 			'Static node metadata has no parameter properties array.',
 			'Node description has no properties array.',

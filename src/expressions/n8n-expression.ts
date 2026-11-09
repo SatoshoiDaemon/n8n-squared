@@ -335,6 +335,14 @@ function evaluateBinary(node: Extract<ExpressionNode, { kind: 'binary' }>, conte
 function evaluateCall(node: Extract<ExpressionNode, { kind: 'call' }>, context: N8nExpressionContext): unknown {
 	const args = node.args.map((arg) => evaluateAst(arg, context));
 	if (node.callee.kind === 'identifier') {
+		if (node.callee.name === 'encodeURIComponent') {
+			if (args.length !== 1) throw new Error('encodeURIComponent requires one argument');
+			return encodeURIComponent(String(args[0] ?? ''));
+		}
+		if (node.callee.name === 'decodeURIComponent') {
+			if (args.length !== 1) throw new Error('decodeURIComponent requires one argument');
+			return decodeURIComponent(String(args[0] ?? ''));
+		}
 		if (node.callee.name === '$items') {
 			const nodeName = args[0];
 			if (typeof nodeName !== 'string') throw new Error('$items requires a node name');

@@ -1,5 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 
 export type CompatibilityStage = 'discovered' | 'loaded' | 'configurable' | 'executable' | 'validated';
 
@@ -21,7 +21,7 @@ export interface CatalogNode {
 	manifestPath: string;
 	descriptionPath: string;
 	version: number | number[] | null;
-	executionType: 'execute' | 'declarative' | 'trigger' | 'poll' | 'webhook' | 'unknown';
+	executionType: 'execute' | 'declarative' | 'supplyData' | 'trigger' | 'poll' | 'webhook' | 'unknown';
 	dependencies: string[];
 	interfacesUsed: string[];
 	compatibility: NodeCompatibilityState;
@@ -142,7 +142,7 @@ export class N8nPackageCatalog {
 	async loadDescriptions(): Promise<{ nodes: CatalogNode[]; credentials: CatalogCredential[] }> {
 		for (const node of this.nodes.values()) {
 			if (node.enterpriseRestricted) continue;
-			const description = await readJson<Record<string, unknown>>(node.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(node.descriptionPath).catch(() => null);
 			if (!description) {
 				node.knownFailures = [...new Set([...node.knownFailures, 'Generated node description JSON is missing or unreadable.'])];
 				continue;
@@ -161,7 +161,7 @@ export class N8nPackageCatalog {
 		}
 		for (const credential of this.credentials.values()) {
 			if (credential.enterpriseRestricted) continue;
-			const description = await readJson<Record<string, unknown>>(credential.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(credential.descriptionPath).catch(() => null);
 			if (!description) continue;
 			credential.description = asObject(description.credential) ?? description;
 			credential.loaded = true;
@@ -204,7 +204,7 @@ export class N8nPackageCatalog {
 			'Static node metadata has no parameter properties array.',
 			'Node description has no properties array.',
 			'No successful node execution has exercised this node version against Squared contracts yet.',
-		].includes(failure) && (executable || (!failure.startsWith('Node method failed before producing') && !failure.startsWith('Required runtime contract is unavailable:'))));
+		].includes(failure) && !failure.startsWith('Node module load failed:') && !failure.startsWith('Runtime class has no supported lifecycle method:') && (executable || (!failure.startsWith('Node method failed before producing') && !failure.startsWith('Required runtime contract is unavailable:'))));
 		if (!node.compatibility.configurable) node.knownFailures.push('Runtime node description has no properties array.');
 		if (!executable) node.knownFailures.push('No successful node execution has exercised this node version against Squared contracts yet.');
 	}
@@ -242,6 +242,24 @@ export class N8nPackageCatalog {
 			? `Required runtime contract is unavailable: ${missingContract}`
 			: `Node method failed before producing a successful result (${error instanceof Error ? error.name : 'Error'}).`;
 		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('Node method failed before producing') && !item.startsWith('Required runtime contract is unavailable:')), reason])];
+	}
+
+	markRuntimeLoadFailure(nodeType: string, error: unknown): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.loaded = false;
+		node.compatibility.executable = false;
+		const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+		const reason = `Node module load failed: ${detail}`;
+		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('Node module load failed:')), reason])];
+	}
+
+	markRuntimeNoSupportedLifecycle(nodeType: string): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.executable = false;
+		const reason = 'Runtime class has no supported lifecycle method: execute, trigger, poll, webhook, supplyData, or declarative REST routing.';
+		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('No successful node execution has exercised') && !item.startsWith('Runtime class has no supported lifecycle method:')), reason])];
 	}
 
 	markExecutable(nodeType: string): void {
@@ -298,6 +316,29 @@ function resolvePackagePath(packageDirectory: string, relativePath: string): str
 
 async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, 'utf8')) as T;
+}
+
+async function readJsonWithCaseInsensitiveFallback<T>(path: string): Promise<T> {
+	try {
+		return await readJson<T>(path);
+	} catch (error) {
+		const actualPath = await resolveCaseInsensitivePath(path).catch(() => null);
+		if (!actualPath || actualPath === path) throw error;
+		return readJson<T>(actualPath);
+	}
+}
+
+async function resolveCaseInsensitivePath(path: string): Promise<string | null> {
+	const absolutePath = resolve(path);
+	const root = parse(absolutePath).root;
+	let current = root;
+	for (const segment of absolutePath.slice(root.length).split(sep).filter(Boolean)) {
+		const entries = await readdir(current).catch(() => []);
+		const actualSegment = entries.find((entry) => entry.toLowerCase() === segment.toLowerCase());
+		if (!actualSegment) return null;
+		current = join(current, actualSegment);
+	}
+	return current;
 }
 
 function basenameWithoutExtension(path: string): string {

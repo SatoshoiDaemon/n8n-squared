@@ -43,6 +43,7 @@ export class N8nNodePackageRuntime {
 	private readonly records = new Map<string, CatalogNode>();
 	private readonly credentialRecords = new Map<string, CatalogCredential>();
 	private readonly loadedCredentials = new Map<string, Promise<Record<string, unknown>>>();
+	private declarativeContextInitialized = false;
 	private readonly loadedNodes = new Map<string, Promise<{
 		wrapper: VersionedTypeLike;
 		description: Record<string, unknown>;
@@ -93,6 +94,7 @@ export class N8nNodePackageRuntime {
 		poll: boolean;
 		webhook: boolean;
 		supplyData: boolean;
+		declarative: boolean;
 	}> {
 		this.ensureInitialized();
 		const record = this.records.get(nodeType);
@@ -108,6 +110,7 @@ export class N8nNodePackageRuntime {
 			poll: typeof selected.poll === 'function',
 			webhook: typeof selected.webhook === 'function',
 			supplyData: typeof selected.supplyData === 'function',
+			declarative: isDeclarativeNodeType(selected),
 		};
 	}
 
@@ -134,10 +137,13 @@ export class N8nNodePackageRuntime {
 		const versions = loaded.versions.filter((version) => {
 			try {
 				const selected = selectNodeType(loaded.wrapper, version);
-				return ['execute', 'trigger', 'poll', 'webhook', 'supplyData'].some((method) => typeof selected[method] === 'function');
+				return ['execute', 'trigger', 'poll', 'webhook', 'supplyData'].some((method) => typeof selected[method] === 'function') || isDeclarativeNodeType(selected);
 			} catch { return false; }
 		});
-		if (versions.length === 0) throw new Error(`Node ${record.nodeType} has no executable lifecycle method supported by Squared`);
+		if (versions.length === 0) {
+			this.catalog.markRuntimeNoSupportedLifecycle(record.nodeType);
+			throw new Error(`Node ${record.nodeType} has no executable lifecycle method supported by Squared`);
+		}
 		const adapter: NodeAdapter = {
 			type: record.nodeType,
 			versions,
@@ -155,7 +161,11 @@ export class N8nNodePackageRuntime {
 				let successful = false;
 				try {
 					const call = handler as (...args: any[]) => unknown;
-					const output = call.length ? await call.call(selected, facade) : await call.call(facade);
+					const output = method === 'supplyData'
+						? await call.call(facade, 0)
+						: call.length
+							? await call.call(selected, facade)
+							: await call.call(facade);
 					successful = true;
 					return output;
 				} catch (error) {
@@ -164,13 +174,18 @@ export class N8nNodePackageRuntime {
 				} finally {
 					if (successful) {
 						const contracts = ['INodeType', 'IExecuteFunctions', 'INodeExecutionData', ...[...accessed].map((method) => `IExecuteFunctions.${method}`)];
-						loaded.runtime.catalog.markRuntimeLoaded(record.nodeType, selected.description ?? loaded.description, method === 'supplyData' ? 'declarative' : method, contracts, true, loaded.versions);
+						loaded.runtime.catalog.markRuntimeLoaded(record.nodeType, selected.description ?? loaded.description, classifyRuntimeExecution(selected.description ?? loaded.description, loaded.wrapper, loaded.versions), contracts, true, loaded.versions);
 						loaded.runtime.catalog.markExecutable(record.nodeType);
 					}
 				}
 		};
-		if (versions.some((version) => typeof selectNodeType(loaded.wrapper, version).execute === 'function')) {
-			adapter.execute = async (context) => await invoke('execute', context) as NodeExecutionData[][];
+		if (versions.some((version) => typeof selectNodeType(loaded.wrapper, version).execute === 'function' || isDeclarativeNodeType(selectNodeType(loaded.wrapper, version)))) {
+			adapter.execute = async (context) => {
+				const selected = selectNodeType(loaded.wrapper, context.node.typeVersion ?? 1);
+				if (typeof selected.execute === 'function') return await invoke('execute', context) as NodeExecutionData[][];
+				if (isDeclarativeNodeType(selected)) return await this.executeDeclarativeNode(record, loaded, context);
+				throw new Error(`Node ${record.nodeType}@${context.node.typeVersion ?? 1} has no execute or declarative routing operation`);
+			};
 		}
 		if (versions.some((version) => typeof selectNodeType(loaded.wrapper, version).trigger === 'function')) {
 			adapter.trigger = async (context) => await invoke('trigger', context);
@@ -196,6 +211,9 @@ export class N8nNodePackageRuntime {
 				return result as Record<string, { response: unknown }>;
 			};
 		}
+		// Resolving the adapter confirms that this runtime has a dispatchable
+		// lifecycle. Validation remains a separate state and requires a real run.
+		this.catalog.markExecutable(record.nodeType);
 		return adapter;
 	}
 
@@ -214,6 +232,154 @@ export class N8nNodePackageRuntime {
 			return await pending;
 		} catch (error) {
 			this.loadedNodes.delete(record.nodeType);
+			this.catalog.markRuntimeLoadFailure(record.nodeType, error);
+			throw error;
+		}
+	}
+
+	private async executeDeclarativeNode(
+		record: CatalogNode,
+		loaded: { wrapper: VersionedTypeLike; description: Record<string, unknown>; versions: number[]; require: ReturnType<typeof createRequire>; runtime: N8nNodePackageRuntime },
+		context: GraphNodeContext,
+	): Promise<NodeExecutionData[][] | undefined> {
+		const selected = selectNodeType(loaded.wrapper, context.node.typeVersion ?? loaded.versions.at(-1) ?? 1);
+		if (!isDeclarativeNodeType(selected)) throw new Error(`Node ${record.nodeType}@${context.node.typeVersion ?? 1} has no declarative routing description`);
+		const accessed = new Set<string>();
+		try {
+			const workflowModule = loaded.require('n8n-workflow') as Record<string, any>;
+			const coreDirectory = resolve(this.packagesDirectory, 'n8n-core');
+			const coreRequire = createRequire(resolve(coreDirectory, 'package.json'));
+			const RoutingNode = (coreRequire(resolve(coreDirectory, 'dist/execution-engine/routing-node.js')) as { RoutingNode: new (context: unknown, nodeType: NodeTypeLike) => { runNode(): Promise<NodeExecutionData[][] | undefined> } }).RoutingNode;
+			const ExecuteContext = (coreRequire(resolve(coreDirectory, 'dist/execution-engine/node-execution-context/execute-context.js')) as { ExecuteContext: new (...args: any[]) => unknown }).ExecuteContext;
+			const InstanceSettings = (coreRequire(resolve(coreDirectory, 'dist/instance-settings/instance-settings.js')) as { InstanceSettings: new (...args: any[]) => unknown }).InstanceSettings;
+			const { Container } = coreRequire('@n8n/di') as { Container: { set(type: new (...args: any[]) => unknown, instance: unknown): void } };
+			if (!this.declarativeContextInitialized) {
+				Container.set(InstanceSettings, { instanceId: 'squared-n8n-runtime', instanceType: 'main' });
+				this.declarativeContextInitialized = true;
+			}
+
+			const nodeTypesByName = new Map<string, Map<number, NodeTypeLike>>();
+			for (const workflowNode of context.workflow.nodes) {
+				const nodeRecord = this.records.get(workflowNode.type);
+				if (!nodeRecord) continue;
+				const nodeLoaded = workflowNode.type === record.nodeType ? loaded : await this.loadNodeType(nodeRecord).catch(() => undefined);
+				if (!nodeLoaded) continue;
+				const versions = nodeTypesByName.get(workflowNode.type) ?? new Map<number, NodeTypeLike>();
+				for (const version of nodeLoaded.versions) {
+					try { versions.set(version, selectNodeType(nodeLoaded.wrapper, version)); } catch { /* unsupported version */ }
+				}
+				nodeTypesByName.set(workflowNode.type, versions);
+			}
+			const nodeTypes = {
+				getByName: (type: string) => [...(nodeTypesByName.get(type)?.values() ?? [])].at(-1),
+				getByNameAndVersion: (type: string, version?: number) => {
+					const versions = nodeTypesByName.get(type);
+					return (version === undefined ? [...(versions?.values() ?? [])].at(-1) : versions?.get(version)) as NodeTypeLike | undefined;
+				},
+				getKnownTypes: () => Object.fromEntries([...nodeTypesByName].map(([type, versions]) => [type, Object.fromEntries(versions)])),
+			};
+			const workflowNodes = context.workflow.nodes.map((node) => ({
+				...node,
+				typeVersion: node.typeVersion ?? 1,
+				position: node.position ?? [0, 0],
+				parameters: node.parameters ?? {},
+			}));
+			const workflow = new workflowModule.Workflow({
+				id: context.workflow.id ?? context.executionId,
+				name: context.workflow.name,
+				nodes: workflowNodes,
+				connections: context.workflow.connections ?? {},
+				active: context.workflow.active ?? false,
+				nodeTypes,
+				staticData: context.getWorkflowStaticData('global'),
+				settings: { ...(context.workflow.settings ?? {}), timezone: context.getTimezone(), binaryMode: 'default' },
+			});
+			const n8nNode = workflow.getNode(context.node.name) ?? workflowNodes.find((node: { name: string }) => node.name === context.node.name);
+			if (!n8nNode) throw new Error(`Node ${context.node.name} is missing from the n8n workflow context`);
+			const inputItems = context.getInputData(0, 'main');
+			const inputData = inputItems.length ? { main: [inputItems] } : {};
+			const executeData = { node: n8nNode, data: inputData, source: null, runIndex: 0 };
+			const runExecutionData = workflowModule.createRunExecutionData({
+				resultData: { runData: {} },
+				executionData: { contextData: {}, nodeExecutionStack: [executeData], metadata: {}, waitingExecution: {}, waitingExecutionSource: {}, runtimeData: {} },
+			});
+			const additionalData = {
+				credentialsHelper: {
+					isCredentialUsableByNode: () => true,
+					getCredentialsProperties: () => [],
+					getDecrypted: async (_additional: unknown, _reference: unknown, credentialType: string) => await context.getCredentials(credentialType),
+					updateCredentialsOauthTokenData: async (_reference: unknown, credentialType: string, data: Record<string, unknown>) => {
+						const credentials = await context.getCredentials(credentialType);
+						await context.updateCredentials(credentialType, { ...credentials, oauthTokenData: data });
+					},
+				},
+				executeWorkflow: async () => { throw new Error('Subworkflow execution is unavailable in the declarative routing context'); },
+				getRunExecutionData: async () => runExecutionData,
+				getRuntimeCredential: async () => undefined,
+				executionId: context.executionId,
+				currentNodeExecutionIndex: 0,
+				restApiUrl: 'http://localhost/rest',
+				instanceBaseUrl: 'http://localhost',
+				formBaseUrl: 'http://localhost/form',
+				formWaitingBaseUrl: 'http://localhost/form-waiting',
+				formTestBaseUrl: 'http://localhost/form-test',
+				webhookBaseUrl: 'http://localhost/webhook',
+				webhookWaitingBaseUrl: 'http://localhost/webhook-waiting',
+				webhookTestBaseUrl: 'http://localhost/webhook-test',
+				mcpBaseUrl: 'http://localhost/mcp',
+				mcpTestBaseUrl: 'http://localhost/mcp-test',
+				variables: {},
+				logAiEvent: () => undefined,
+				currentNodeParameters: n8nNode.parameters,
+			};
+			const expression = workflow.expression as { getParameterValue: (...args: any[]) => unknown };
+			expression.getParameterValue = (value: unknown, _runData: unknown, _runIndex: number, itemIndex: number, _nodeName: string, _connectionInputData: unknown, _mode: string, additionalKeys: unknown, _execution: unknown, returnObjectAsString = false) => {
+				const resolved = resolveGraphParameterValue(value, context, itemIndex, {
+					$parameter: context.node.parameters ?? {},
+					$vars: {},
+					...(asRecord(additionalKeys) ?? {}),
+				});
+				return returnObjectAsString && isRecord(resolved) ? JSON.stringify(resolved) : resolved;
+			};
+			const mode = context.mode === 'manual' ? 'manual' : context.mode;
+			const executionContext = new ExecuteContext(
+				workflow,
+				n8nNode,
+				additionalData,
+				mode,
+				runExecutionData,
+				0,
+				inputItems,
+				inputData,
+				executeData,
+				[],
+				context.signal,
+			);
+			const routingNode = new RoutingNode(executionContext, selected) as unknown as Record<string, any>;
+			const facade = createExecutionFacade(context, loaded.require, selected.description ?? loaded.description, accessed, loaded.runtime);
+			routingNode.rawRoutingRequest = async (_executeSingleContext: unknown, requestData: unknown, credentialType?: string) => {
+				const options = asRecord(asRecord(requestData)?.options) ?? {};
+				options.returnFullResponse = true;
+				const helperName = credentialType ? 'httpRequestWithAuthentication' : 'httpRequest';
+				const helper = (facade.helpers as Record<string, unknown>)[helperName];
+				if (typeof helper !== 'function') throw new Error(`n8n IExecuteFunctions.helpers.${helperName} is not implemented by Squared`);
+				return await (helper as (...args: unknown[]) => Promise<unknown>).call(facade, ...(credentialType ? [credentialType, options] : [options]));
+			};
+			const output = await routingNode.runNode();
+			const contracts = [
+				'INodeTypeDescription.requestDefaults',
+				'INodeTypeDescription.requestOperations',
+				'IRoutingNode.runNode',
+				'IExecuteFunctions.getNodeParameter',
+				'IExecuteSingleFunctions.getNodeParameter',
+				'IExecuteFunctions.helpers.httpRequest',
+				...([...accessed].map((method) => `IExecuteFunctions.${method}`)),
+			];
+			this.catalog.markRuntimeLoaded(record.nodeType, selected.description ?? loaded.description, 'declarative', contracts, true, loaded.versions);
+			this.catalog.markExecutable(record.nodeType);
+			return output;
+		} catch (error) {
+			this.catalog.markExecutionFailure(record.nodeType, error);
 			throw error;
 		}
 	}
@@ -239,7 +405,10 @@ export class N8nNodePackageRuntime {
 		const description = asRecord(selectNodeType(wrapper, currentVersion).description) ?? asRecord(wrapper.description);
 		if (!description) throw new Error(`Node module ${record.manifestPath} has no runtime description`);
 		const executable = versions.some((version) => {
-			try { return ['execute', 'trigger', 'poll', 'webhook', 'supplyData'].some((method) => typeof selectNodeType(wrapper, version)[method] === 'function'); } catch { return false; }
+			try {
+				const selected = selectNodeType(wrapper, version);
+				return ['execute', 'trigger', 'poll', 'webhook', 'supplyData'].some((method) => typeof selected[method] === 'function') || isDeclarativeNodeType(selected);
+			} catch { return false; }
 		});
 		const interfacesUsed = scanRuntimeContracts(await readFile(entryPath, 'utf8').catch(() => ''), executable);
 		this.catalog.markRuntimeLoaded(record.nodeType, description, classifyRuntimeExecution(description, wrapper, versions), interfacesUsed, false, versions);
@@ -523,11 +692,37 @@ function findNodeConstructor(namespace: Record<string, unknown>, exportName: str
 	for (const candidate of candidates) {
 		if (typeof candidate !== 'function') continue;
 		const prototype = (candidate as { prototype?: Record<string, unknown> }).prototype;
-		if (prototype && ('execute' in prototype || 'getNodeType' in prototype || 'trigger' in prototype || 'poll' in prototype || 'webhook' in prototype)) {
+		if (prototype && ('execute' in prototype || 'getNodeType' in prototype || 'trigger' in prototype || 'poll' in prototype || 'webhook' in prototype || 'supplyData' in prototype)) {
 			return candidate as new () => unknown;
 		}
+		if (candidate !== namespace[exportName] && candidate !== namespace.default) continue;
+		try {
+			const instance = new (candidate as new () => NodeTypeLike)();
+			if (hasNodeLifecycle(instance) || isDeclarativeNodeType(instance)) return candidate as new () => unknown;
+		} catch { /* continue through generated CommonJS exports */ }
 	}
 	return undefined;
+}
+
+function isDeclarativeNodeType(nodeType: NodeTypeLike): boolean {
+	const description = asRecord(nodeType.description);
+	return Boolean(description && (description.requestDefaults !== undefined || description.requestOperations !== undefined));
+}
+
+function hasNodeLifecycle(nodeType: NodeTypeLike): boolean {
+	return ['execute', 'trigger', 'poll', 'webhook', 'supplyData'].some((method) => typeof nodeType[method] === 'function') || typeof nodeType.getNodeType === 'function';
+}
+
+function resolveGraphParameterValue(value: unknown, context: GraphNodeContext, itemIndex: number, additional: Record<string, unknown>): unknown {
+	if (typeof value === 'string') return context.evaluateExpression(value, itemIndex, undefined, true, additional);
+	if (Array.isArray(value)) return value.map((item) => resolveGraphParameterValue(item, context, itemIndex, additional));
+	if (!isRecord(value)) return value;
+	const resolved: Record<string, unknown> = {};
+	for (const [key, item] of Object.entries(value)) {
+		if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error(`Unsafe workflow parameter key: ${key}`);
+		resolved[key] = resolveGraphParameterValue(item, context, itemIndex, additional);
+	}
+	return resolved;
 }
 
 function findCredentialConstructor(namespace: Record<string, unknown>, exportName: string): (new () => CredentialTypeLike) | undefined {
@@ -618,6 +813,7 @@ function classifyRuntimeExecution(description: Record<string, unknown>, wrapper:
 	const methods = versions.map((version) => selectNodeType(wrapper, version));
 	if (description.polling === true || methods.some((type) => typeof type.poll === 'function')) return 'poll';
 	if (methods.some((type) => typeof type.trigger === 'function')) return 'trigger';
+	if (methods.some((type) => typeof type.supplyData === 'function')) return 'supplyData';
 	if (description.requestDefaults !== undefined || description.requestOperations !== undefined) return 'declarative';
 	return 'execute';
 }

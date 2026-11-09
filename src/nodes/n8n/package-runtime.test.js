@@ -12,7 +12,7 @@ const packagesDirectory = process.env.SQUARED_N8N_PACKAGES_DIR;
 test('loads and executes real versioned n8n-nodes-base modules', { skip: !packagesDirectory }, async () => {
 	const report = await runN8nBaseCompatibilityProbe(packagesDirectory);
 	assert.ok(report.nodesDiscovered >= 400);
-	assert.equal(report.executions.length, 42);
+	assert.equal(report.executions.length, 45);
 	assert.ok(report.executions.every((execution) => execution.status === 'passed'));
 	assert.equal(report.executions.find((execution) => execution.nodeType === 'n8n-nodes-base.stopAndError')?.observedStatus, 'failed');
 	assert.equal(report.executions.find((execution) => execution.nodeType === 'n8n-nodes-base.merge')?.status, 'passed');
@@ -27,9 +27,12 @@ test('loads and executes real versioned n8n-nodes-base modules', { skip: !packag
 		'n8n-nodes-base.itemLists', 'n8n-nodes-base.aggregate', 'n8n-nodes-base.dateTime', 'n8n-nodes-base.crypto',
 		'n8n-nodes-base.summarize', 'n8n-nodes-base.compareDatasets', 'n8n-nodes-base.moveBinaryData',
 		'n8n-nodes-base.convertToFile', 'n8n-nodes-base.spreadsheetFile', 'n8n-nodes-base.stopAndError', 'n8n-nodes-base.github',
-		'n8n-nodes-base.xml', 'n8n-nodes-base.html', 'n8n-nodes-base.markdown', 'n8n-nodes-base.merge', 'n8n-nodes-base.wait', 'n8n-nodes-base.webhook', 'n8n-nodes-base.rssFeedReadTrigger',
+		'n8n-nodes-base.xml', 'n8n-nodes-base.html', 'n8n-nodes-base.markdown', 'n8n-nodes-base.merge', 'n8n-nodes-base.wait', 'n8n-nodes-base.webhook', 'n8n-nodes-base.rssFeedReadTrigger', 'n8n-nodes-base.interval',
 	]) {
 		assert.equal(report.nodes.find((node) => node.nodeType === type)?.compatibility.validated, true, `${type} should carry validation evidence`);
+	}
+	for (const type of ['n8n-nodes-base.npm', '@n8n/n8n-nodes-langchain.textSplitterCharacterTextSplitter']) {
+		assert.equal(report.nodes.find((node) => node.nodeType === type)?.compatibility.validated, true, `${type} should carry real-node validation evidence`);
 	}
 });
 

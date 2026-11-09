@@ -19,11 +19,11 @@ Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.m
 | Estado | Cobertura |
 | --- | ---: |
 | discovered | 569 / 569 |
-| loaded | 32 / 569 |
-| configurable | 32 / 569 |
-| executable | 32 / 569 |
-| validated | 32 / 569 |
+| loaded | 567 / 569 |
+| configurable | 567 / 569 |
+| executable | 567 / 569 |
+| validated | 35 / 569 |
 
-O JSON ao lado registra cada node dos manifests com tipo de execução, versão, dependências detectadas, interfaces, licença e evidência por teste. Nodes com status executável foram carregados do pacote publicado e executaram seu próprio método; nomes e metadados sem uma execução aprovada permanecem como descobertos.
+Estados: descoberto vem dos manifests; carregado exige importar a classe publicada; configurável exige uma descrição com propriedades; executável exige um adapter de lifecycle que o runtime consiga resolver; validado exige ao menos um cenário real concluído. Um cenário valida apenas a versão e a operação registradas. O JSON também registra dependências, interfaces, licença, capabilities e falhas por node.
 
-A validação local executou 42 casos determinísticos usando n8n-nodes-base@2.42.5, marcou 32 tipos como validados e carregou 4 schemas de credencial. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.
+A validação carregou 567/569 classes e executou 45 casos determinísticos com @n8n/n8n-nodes-langchain@2.42.5, n8n-nodes-base@2.42.5; 35 tipos passaram cenários reais e 5 schemas de credencial foram carregados. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.

@@ -20,6 +20,7 @@ const runtimeNodes = loadState.nodes.map((node) => {
 		.map((stage) => [stage, Boolean(node.compatibility[stage] || validationCompatibility[stage])]));
 	const staleValidationFailures = new Set([
 		'Node code is discovered but has not been loaded into the runtime.',
+		'Generated node description JSON is missing or unreadable.',
 		'No successful node execution has exercised this node version against Squared contracts yet.',
 		'Static node metadata has no parameter properties array.',
 		'Node description has no properties array.',
@@ -44,7 +45,8 @@ const runtimeNodes = loadState.nodes.map((node) => {
 const report = {
 	package: 'n8n-nodes-base',
 	packageVersion: probe.nodes.find((node) => node.packageName === 'n8n-nodes-base')?.packageVersion ?? 'unknown',
-	packages: loadState.packages,
+	packages: [...new Map(loadState.nodes.map((node) => [node.packageName, node.packageVersion])).entries()]
+		.map(([name, version]) => `${name}@${version}`),
 	packageSource: 'installed npm package loaded from SQUARED_N8N_PACKAGES_DIR',
 	nodesDiscovered: loadState.nodesDiscovered,
 	nodeTypesLoaded: runtimeNodes.filter((node) => node.compatibility.loaded).length,

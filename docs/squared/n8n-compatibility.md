@@ -4,7 +4,7 @@
 
 O snapshot upstream é `n8n@2.42.7`; os manifests npm usados aqui são `n8n-nodes-base@2.42.5` e `@n8n/n8n-nodes-langchain@2.42.5`. O catálogo tem 569 tipos: 444 do pacote base e 125 do LangChain.
 
-A matriz atual registra **567 classes carregadas, configuráveis e com adapter resolvido**, de 569 tipos descobertos; **35 tipos passaram por cenários reais em 45 execuções determinísticas**. Os 32 tipos validados até o PR #7 continuam cobertos. Esta onda acrescenta `NPM` v1, `Character Text Splitter` v1 e `Interval` v1. A suíte usa classes oficiais publicadas e registra versão, operação, contratos, esperado e observado; um cenário não comprova todas as operações de um node. O detalhamento está em [compatibility-matrix.json](compatibility-matrix.json) e [compatibility-runtime-results.json](compatibility-runtime-results.json).
+A matriz atual registra **567 classes carregadas, configuráveis e com adapter resolvido**, de 569 tipos descobertos; **37 tipos passaram por cenários reais em 55 execuções determinísticas**. Os 32 tipos validados até o PR #7 continuam cobertos. A onda anterior acrescentou `NPM` v1, `Character Text Splitter` v1 e `Interval` v1; esta acrescenta `HTML Extract` v1 e `Recursive Character Text Splitter` v1, além de cenários adicionais para Item Lists v3.1, Date & Time v2, XML v1 e Markdown v1. A suíte usa classes oficiais publicadas e registra versão, operação, contratos, esperado e observado; um cenário não comprova todas as operações de um node. O detalhamento está em [compatibility-matrix.json](compatibility-matrix.json) e [compatibility-runtime-results.json](compatibility-runtime-results.json).
 
 | Estado da matriz | Tipos |
 | --- | ---: |
@@ -12,7 +12,7 @@ A matriz atual registra **567 classes carregadas, configuráveis e com adapter r
 | Carregado | 567 / 569 |
 | Configurável | 567 / 569 |
 | Executável (adapter resolvido) | 567 / 569 |
-| Validado por cenário real | 35 / 569 |
+| Validado por cenário real | 37 / 569 |
 
 ## Runtime integrado
 
@@ -32,9 +32,9 @@ Os helpers HTTP aceitam métodos, headers, query, bodies JSON/form/multipart, ti
 
 ## Limites conhecidos
 
-- Os 567 adapters disponíveis não significam que todas as operações foram executadas; 532 tipos ainda não têm um cenário de validação. Duas entradas Enterprise estão excluídas pelo pacote/licença.
-- Um tipo LangChain, `Character Text Splitter`, passou por cenário real; os outros nodes de chains, agents, embeddings e vector stores ainda precisam de fixtures e contratos específicos do ecossistema.
-- Os 35 tipos validados representam apenas as versões e operações registradas na matriz. Credenciais específicas, opções raras e todas as versões não ficam comprovadas por um cenário.
+- Os 567 adapters disponíveis não significam que todas as operações foram executadas; 530 tipos ainda não têm um cenário de validação. Duas entradas Enterprise estão excluídas pelo pacote/licença.
+- Dois tipos LangChain, `Character Text Splitter` e `Recursive Character Text Splitter`, passaram por cenário real; os outros nodes de chains, agents, embeddings e vector stores ainda precisam de fixtures e contratos específicos do ecossistema.
+- Os 37 tipos validados representam apenas as versões e operações registradas na matriz. Credenciais específicas, opções raras e todas as versões não ficam comprovadas por um cenário.
 - `Code` v2 foi validado em JavaScript all-items e each-item com o `JavaScriptSandbox` publicado; o runner Python e a execução em processo isolado do task runner ainda não estão integrados.
 - Expressões cobrem um subconjunto seguro de `$json`, `$binary`, `$input`, `$items`, `$node`, `$execution` e `$workflow`; objetos/helpers de expressão do n8n ainda não estão completos.
 - A ativação/polling chama os métodos `trigger()`/`poll()` carregados da versão solicitada. O registro HTTP local usa as descrições oficiais de webhook e suporta auth Basic/Header; registro remoto por `webhookMethods`, JWT/OAuth interativo para webhooks, respostas síncronas por `Respond to Webhook`, `onMessage` e hooks especializados ainda precisam ser implementados/testados por família. Waits de tempo retomam pelo scheduler e waits que aceitam retomada manual usam `POST /api/executions/{id}/resume`.
@@ -46,7 +46,7 @@ Os helpers HTTP aceitam métodos, headers, query, bodies JSON/form/multipart, ti
 ```powershell
 $env:SQUARED_N8N_PACKAGES_DIR = (Resolve-Path 'squared-data/n8n-nodes/node_modules').Path
 npm run compatibility:validate
-npm run compatibility:matrix
+npm run compatibility:matrix -- --reuse-runtime-evidence
 npm test
 npm run typecheck
 ```

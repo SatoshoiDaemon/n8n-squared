@@ -229,8 +229,8 @@
         "n8n-nodes-base@2.42.5"
       ],
       "nodesDiscovered": 569,
-      "deterministicExecutions": 45,
-      "nodesValidated": 35,
+      "deterministicExecutions": 55,
+      "nodesValidated": 37,
       "nodesLoaded": 567,
       "nodesConfigurable": 567,
       "nodesExecutable": 567,
@@ -245,9 +245,9 @@
       "loaded": 567,
       "configurable": 567,
       "executable": 567,
-      "validated": 35
+      "validated": 37
     },
-    "fullyValidatedNodes": 35,
+    "fullyValidatedNodes": 37,
     "knownLimitations": [
       "Executable means an adapter can dispatch to a supported published lifecycle; validated means at least one deterministic operation completed successfully.",
       "Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.",
@@ -284,9 +284,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.agent",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -351,9 +349,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.agentTool",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -412,9 +408,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.alibabaCloud",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -470,9 +464,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.anthropic",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -548,9 +540,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chainLlm",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -631,9 +621,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chainRetrievalQa",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -690,9 +678,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chainSummarization",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -763,9 +749,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chat",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -829,9 +813,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chatHubVectorStorePGVector",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -893,9 +875,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chatHubVectorStorePinecone",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -957,9 +937,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chatHubVectorStoreQdrant",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1042,9 +1020,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chatTrigger",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1130,9 +1106,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.code",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1201,9 +1175,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1265,9 +1237,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentBinaryInputLoader",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1329,9 +1299,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1400,9 +1368,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentGithubLoader",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1461,9 +1427,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentJsonInputLoader",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1525,9 +1489,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsAwsBedrock",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1588,9 +1550,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsAzureOpenAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1650,9 +1610,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsCohere",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1711,9 +1669,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsDatabricks",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1773,9 +1729,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1840,9 +1794,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsGoogleVertex",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1905,9 +1857,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsHuggingFaceInference",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -1965,9 +1915,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsLemonade",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2029,9 +1977,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2099,9 +2045,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsNvidia",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2162,9 +2106,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsOllama",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2236,9 +2178,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2310,9 +2250,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsOracleDb",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2370,9 +2308,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.googleGemini",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2424,9 +2360,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.guardrails",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2498,9 +2432,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.informationExtractor",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2569,9 +2501,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatAlibabaCloud",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2650,9 +2580,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2728,9 +2656,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatAwsBedrock",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2796,9 +2722,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatAzureOpenAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2862,9 +2786,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatCohere",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2925,9 +2847,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatDatabricks",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -2991,9 +2911,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3061,9 +2979,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3133,9 +3049,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3195,9 +3109,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatGroq",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3256,9 +3168,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatLemonade",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3327,9 +3237,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatMinimax",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3393,9 +3301,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3460,9 +3366,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatMoonshot",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3527,9 +3431,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatNvidia",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3589,9 +3491,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatOllama",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3674,9 +3574,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3743,9 +3641,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3809,9 +3705,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatVercelAiGateway",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3875,9 +3769,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatXAiGrok",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3935,9 +3827,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmCohere",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -3995,9 +3885,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmLemonade",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4057,9 +3945,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmOllama",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4126,9 +4012,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmOpenAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4187,9 +4071,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmOpenHuggingFaceInference",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4247,9 +4129,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.manualChatTrigger",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4324,9 +4204,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.mcpClient",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4401,9 +4279,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.mcpClientTool",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4479,9 +4355,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.mcpRegistryClientTool",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4549,9 +4423,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.mcpTrigger",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4621,9 +4493,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4686,9 +4556,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryChatRetriever",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4752,9 +4620,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryManager",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4823,9 +4689,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryMongoDbChat",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4891,9 +4755,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryMotorhead",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -4969,9 +4831,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5046,9 +4906,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryRedisChat",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5124,9 +4982,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryXata",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5198,9 +5054,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryZep",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5288,9 +5142,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.microsoftAgent365Trigger",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5350,9 +5202,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.miniMax",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5420,9 +5270,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.modelSelector",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5476,9 +5324,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.moonshot",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5543,9 +5389,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreMongoDBAtlas",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5602,9 +5446,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.ollama",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5654,9 +5496,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.openAi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5743,9 +5583,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.openAiAssistant",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5807,9 +5645,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreRedis",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5871,9 +5707,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5928,9 +5762,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserItemList",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -5996,9 +5828,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6061,9 +5891,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.rerankerCohere",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6123,9 +5951,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.retrieverContextualCompression",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6186,9 +6012,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.retrieverMultiQuery",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6249,9 +6073,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6320,9 +6142,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.retrieverWorkflow",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6394,9 +6214,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.sentimentAnalysis",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6467,9 +6285,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.textClassifier",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6529,9 +6345,7 @@
         "executable": true,
         "validated": true
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.textSplitterCharacterTextSplitter",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6612,6 +6426,7 @@
         "IExecuteFunctions.description",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -6621,11 +6436,9 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6645,7 +6458,34 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Recursive Character Text Splitter v1 groups a deterministic input through a real AI connection",
+          "operation": "splitText(\"one two three\") with chunkSize 7",
+          "contracts": [
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData",
+            "ISupplyDataFunctions.logAiEvent"
+          ],
+          "expected": {
+            "chunks": [
+              "one two",
+              "three"
+            ],
+            "aiExecutionLogged": true
+          },
+          "observed": {
+            "chunks": [
+              "one two",
+              "three"
+            ],
+            "aiExecutionLogged": true
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -6683,9 +6523,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.textSplitterTokenSplitter",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6744,9 +6582,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolCalculator",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6812,9 +6648,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolCode",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -6949,9 +6783,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7012,9 +6844,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolSearXng",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7074,9 +6904,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolSerpApi",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7138,9 +6966,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolThink",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7205,9 +7031,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolVectorStore",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7268,9 +7092,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolWikipedia",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7330,9 +7152,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolWolframAlpha",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7382,9 +7202,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.toolWorkflow",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7449,9 +7267,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreAzureAISearch",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7520,9 +7336,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreChromaDB",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7583,9 +7397,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreDatabricks",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7646,9 +7458,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7714,9 +7524,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreInMemoryInsert",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7776,9 +7584,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreInMemoryLoad",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7835,9 +7641,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreMilvus",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7902,9 +7706,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreOracleDB",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -7964,9 +7766,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8037,9 +7837,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStorePineconeInsert",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8106,9 +7904,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStorePineconeLoad",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8168,9 +7964,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8230,9 +8024,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8303,9 +8095,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreSupabaseInsert",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8372,9 +8162,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreSupabaseLoad",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8436,9 +8224,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreWeaviate",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8494,9 +8280,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreZep",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8562,9 +8346,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreZepInsert",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -8626,9 +8408,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreZepLoad",
       "runtimePackage": "@n8n/n8n-nodes-langchain",
       "runtimePackageVersion": "2.42.5",
@@ -13755,9 +13535,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.currents",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -13819,9 +13597,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.currentsTrigger",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -14216,6 +13992,41 @@
               {
                 "tag": "fixed",
                 "formattedDate": "2024-01-02"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 2,
+          "test": "Date & Time v2 extracts a calendar component from a fixed date",
+          "operation": "operation=extractDate",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getTimezone",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixed",
+                "month": 1
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixed",
+                "month": 1
               }
             ],
             "binary": [
@@ -14826,9 +14637,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.dynamicCredentialCheck",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -20369,7 +20178,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "n8n-nodes-base.htmlExtract",
@@ -20391,7 +20200,48 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "HTML Extract v1 returns selected text and attributes from real HTML",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "heading": "Squared",
+                "links": [
+                  "/docs",
+                  "/api"
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "heading": "Squared",
+                "links": [
+                  "/docs",
+                  "/api"
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "n8n-nodes-base",
@@ -21334,6 +21184,7 @@
       "interfacesUsed": [
         "IExecuteFunctions",
         "IExecuteFunctions.getInputData",
+        "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
         "INodeExecutionData",
         "INodeType",
@@ -21410,6 +21261,208 @@
             ],
             "binary": [
               {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 concatenates selected values and preserves source item links",
+          "operation": "resource=itemList;operation=concatenateItems",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "values": [
+                  2,
+                  4
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "values": [
+                  2,
+                  4
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 limit keeps the configured last items",
+          "operation": "resource=itemList;operation=limit",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 2
+              },
+              {
+                "id": 3
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 removes duplicate items by selected fields",
+          "operation": "resource=itemList;operation=removeDuplicates",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "label": "first"
+              },
+              {
+                "id": 2,
+                "label": "other"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "id": 1,
+                "label": "first"
+              },
+              {
+                "id": 2,
+                "label": "other"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 sorts items by a selected field",
+          "operation": "resource=itemList;operation=sort",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "score": 3
+              },
+              {
+                "score": 5
+              },
+              {
+                "score": 8
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "score": 3
+              },
+              {
+                "score": 5
+              },
+              {
+                "score": 8
+              }
+            ],
+            "binary": [
+              {},
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 3.1,
+          "test": "Item Lists v3.1 summarizes numeric fields and keeps item links",
+          "operation": "resource=itemList;operation=summarize",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "sum_value": 9,
+                "unique_count_group": 2
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "sum_value": 9,
+                "unique_count_group": 2
+              }
+            ],
+            "binary": [
               {}
             ]
           },
@@ -23652,6 +23705,36 @@
               {
                 "source": "fixture",
                 "markdown": "# Squared\n\nHello **world**"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1,
+          "test": "Markdown v1 converts Markdown to HTML using the published converter",
+          "operation": "mode=markdownToHtml",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.returnJsonArray",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "source": "fixture",
+                "html": "<h1 id=\"squared\">Squared</h1>\n<p>Hello <strong>world</strong></p>"
               }
             ],
             "binary": [
@@ -26087,9 +26170,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.n8nTrainingCustomerDatastore",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -26143,9 +26224,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.n8nTrainingCustomerMessenger",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -27315,9 +27394,7 @@
         "executable": true,
         "validated": false
       },
-      "knownFailures": [
-        "Generated node description JSON is missing or unreadable."
-      ],
+      "knownFailures": [],
       "runtimeType": "n8n-nodes-base.oracleSql",
       "runtimePackage": "n8n-nodes-base",
       "runtimePackageVersion": "2.42.5",
@@ -36436,6 +36513,33 @@
                 "root": {
                   "name": "Squared"
                 }
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1,
+          "test": "XML v1 builds XML from JSON through the published serializer",
+          "operation": "mode=jsonToxml",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "xml": "<root>\n  <value>42</value>\n</root>"
               }
             ],
             "binary": [

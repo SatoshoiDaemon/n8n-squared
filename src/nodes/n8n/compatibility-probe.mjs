@@ -111,6 +111,33 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			status: 'passed',
 		});
 		executions.push({ nodeType, typeVersion: 1, test: 'Character Text Splitter v1 splits a deterministic input through a real AI connection', status: 'passed', output: result.output, metadata: result.metadata });
+
+		const recursiveNodeType = '@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter';
+		const recursiveWorkflow = {
+			id: 'squared-compatibility-ai-recursive-text-splitter', name: 'Published Recursive Character Text Splitter v1',
+			nodes: [manual,
+				{ id: 'splitter', name: 'Recursive Splitter', type: recursiveNodeType, typeVersion: 1, parameters: { chunkSize: 7, chunkOverlap: 0, options: {} } },
+				{ id: 'capture', name: 'Capture AI value', type: 'squared.compatibility.aiTextSplitterCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Recursive Splitter', type: 'main', index: 0 }]] },
+				'Recursive Splitter': { ai_textSplitter: [[{ node: 'Capture AI value', type: 'ai_textSplitter', index: 0 }]] },
+			},
+		};
+		const recursiveResult = await engine.execute(recursiveWorkflow, { input: { fixture: true } });
+		assert.equal(recursiveResult.status, 'succeeded', recursiveResult.error);
+		assert.deepEqual(recursiveResult.output.map((item) => item.json), [{ chunks: ['one two', 'three'] }]);
+		assert.ok(recursiveResult.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split'));
+		runtime.catalog.markValidatedWithEvidence(recursiveNodeType, {
+			typeVersion: 1,
+			test: 'Recursive Character Text Splitter v1 groups a deterministic input through a real AI connection',
+			operation: 'splitText("one two three") with chunkSize 7',
+			contracts: ['ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData', 'ISupplyDataFunctions.logAiEvent'],
+			expected: { chunks: ['one two', 'three'], aiExecutionLogged: true },
+			observed: { chunks: recursiveResult.output[0]?.json.chunks, aiExecutionLogged: recursiveResult.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split') },
+			status: 'passed',
+		});
+		executions.push({ nodeType: recursiveNodeType, typeVersion: 1, test: 'Recursive Character Text Splitter v1 groups a deterministic input through a real AI connection', status: 'passed', output: recursiveResult.output, metadata: recursiveResult.metadata });
 	}
 
 	await execute('Set v3.5 expression and keep input fields', 'n8n-nodes-base.set', 3.5, {
@@ -272,11 +299,63 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
 	}, { values: ['a', 'b'], keep: 7 }, { output: [{ keep: 7, values: 'a' }, { keep: 7, values: 'b' }] });
 
+	await execute('Item Lists v3.1 concatenates selected values and preserves source item links', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1 concatenateItems',
+		nodes: [manual, { id: 'item-lists-concatenate', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: {
+			resource: 'itemList', operation: 'concatenateItems', aggregate: 'aggregateIndividualFields',
+			fieldsToAggregate: { fieldToAggregate: [{ fieldToAggregate: 'value', renameField: true, outputFieldName: 'values' }] }, options: {},
+		} }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, [{ json: { value: 2 } }, { json: { value: 4 } }], { output: [{ values: [2, 4] }], assertResult(result) {
+		assert.deepEqual(result.output[0].pairedItem, [{ item: 0 }, { item: 1 }]);
+	} });
+
+	await execute('Item Lists v3.1 limit keeps the configured last items', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1 limit lastItems',
+		nodes: [manual, { id: 'item-lists-limit', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: { resource: 'itemList', operation: 'limit', maxItems: 2, keep: 'lastItems' } }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, [{ json: { id: 1 } }, { json: { id: 2 } }, { json: { id: 3 } }], { output: [{ id: 2 }, { id: 3 }] });
+
+	await execute('Item Lists v3.1 removes duplicate items by selected fields', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1 removeDuplicates selectedFields',
+		nodes: [manual, { id: 'item-lists-dedupe', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: {
+			resource: 'itemList', operation: 'removeDuplicates', compare: 'selectedFields', fieldsToCompare: 'id', options: {},
+		} }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, [{ json: { id: 1, label: 'first' } }, { json: { id: 1, label: 'duplicate' } }, { json: { id: 2, label: 'other' } }], { output: [{ id: 1, label: 'first' }, { id: 2, label: 'other' }] });
+
+	await execute('Item Lists v3.1 sorts items by a selected field', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1 sort ascending',
+		nodes: [manual, { id: 'item-lists-sort', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: {
+			resource: 'itemList', operation: 'sort', type: 'simple', sortFieldsUi: { sortField: [{ fieldName: 'score', order: 'ascending' }] }, options: {},
+		} }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, [{ json: { score: 8 } }, { json: { score: 3 } }, { json: { score: 5 } }], { output: [{ score: 3 }, { score: 5 }, { score: 8 }] });
+
+	await execute('Item Lists v3.1 summarizes numeric fields and keeps item links', 'n8n-nodes-base.itemLists', 3.1, {
+		name: 'Published Item Lists v3.1 summarize sum',
+		nodes: [manual, { id: 'item-lists-summarize', name: 'Item Lists', type: 'n8n-nodes-base.itemLists', typeVersion: 3.1, parameters: {
+			resource: 'itemList', operation: 'summarize', fieldsToSummarize: { values: [{ aggregation: 'sum', field: 'value' }, { aggregation: 'countUnique', field: 'group' }] },
+			fieldsToSplitBy: '', options: { outputFormat: 'separateItems' },
+		} }],
+		connections: { Manual: { main: [[{ node: 'Item Lists', type: 'main', index: 0 }]] } },
+	}, [{ json: { value: 2, group: 'a' } }, { json: { value: 4, group: 'a' } }, { json: { value: 3, group: 'b' } }], { output: [{ sum_value: 9, unique_count_group: 2 }], assertResult(result) {
+		assert.deepEqual(result.output[0].pairedItem, [{ item: 0 }, { item: 1 }, { item: 2 }]);
+	} });
+
 	await execute('Date & Time v2 formats a fixed date deterministically', 'n8n-nodes-base.dateTime', 2, {
 		name: 'Published Date & Time v2',
 		nodes: [manual, { id: 'date-time', name: 'Date & Time', type: 'n8n-nodes-base.dateTime', typeVersion: 2, parameters: { operation: 'formatDate', date: '2024-01-02T03:04:05.000Z', format: 'yyyy-MM-dd', outputFieldName: 'formattedDate', options: { includeInputFields: true } } }],
 		connections: { Manual: { main: [[{ node: 'Date & Time', type: 'main', index: 0 }]] } },
 	}, { tag: 'fixed' }, { output: [{ tag: 'fixed', formattedDate: '2024-01-02' }] });
+
+	await execute('Date & Time v2 extracts a calendar component from a fixed date', 'n8n-nodes-base.dateTime', 2, {
+		name: 'Published Date & Time v2 extractDate',
+		nodes: [manual, { id: 'date-part', name: 'Date & Time', type: 'n8n-nodes-base.dateTime', typeVersion: 2, parameters: {
+			operation: 'extractDate', date: '2024-01-02T03:04:05.000Z', part: 'month', outputFieldName: 'month', options: { includeInputFields: true },
+		} }],
+		connections: { Manual: { main: [[{ node: 'Date & Time', type: 'main', index: 0 }]] } },
+	}, { source: 'fixed' }, { output: [{ source: 'fixed', month: 1 }] });
 
 	await execute('Crypto v2 hashes a fixed string with SHA-256', 'n8n-nodes-base.crypto', 2, {
 		name: 'Published Crypto v2 SHA-256',
@@ -389,17 +468,49 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		connections: { Manual: { main: [[{ node: 'XML', type: 'main', index: 0 }]] } },
 	}, { data: '<root><name>Squared</name></root>' }, { output: [{ root: { name: 'Squared' } }] });
 
+	await execute('XML v1 builds XML from JSON through the published serializer', 'n8n-nodes-base.xml', 1, {
+		name: 'Published XML v1 jsonToxml',
+		nodes: [manual, { id: 'xml-build', name: 'XML', type: 'n8n-nodes-base.xml', typeVersion: 1, parameters: { mode: 'jsonToxml', dataPropertyName: 'xml', options: { headless: true } } }],
+		connections: { Manual: { main: [[{ node: 'XML', type: 'main', index: 0 }]] } },
+	}, { root: { value: '42' } }, { assertResult(result) {
+		assert.match(result.output[0].json.xml, /<root>\s*<value>42<\/value>\s*<\/root>/);
+	} });
+
 	await execute('HTML v1.2 extracts a CSS-selected text value', 'n8n-nodes-base.html', 1.2, {
 		name: 'Published HTML v1.2',
 		nodes: [manual, { id: 'html', name: 'HTML', type: 'n8n-nodes-base.html', typeVersion: 1.2, parameters: { operation: 'extractHtmlContent', sourceData: 'json', dataPropertyName: 'html', extractionValues: { values: [{ key: 'heading', cssSelector: 'h1', returnValue: 'text', returnArray: false }] }, options: { trimValues: true, cleanUpText: true } } }],
 		connections: { Manual: { main: [[{ node: 'HTML', type: 'main', index: 0 }]] } },
 	}, { html: '<main><h1>Squared</h1></main>' }, { output: [{ heading: 'Squared' }] });
 
+	await execute('HTML Extract v1 returns selected text and attributes from real HTML', 'n8n-nodes-base.htmlExtract', 1, {
+		name: 'Published HTML Extract v1',
+		nodes: [manual, { id: 'html-extract', name: 'HTML Extract', type: 'n8n-nodes-base.htmlExtract', typeVersion: 1, parameters: {
+			sourceData: 'json', dataPropertyName: 'html',
+			extractionValues: { values: [
+				{ key: 'heading', cssSelector: 'h1', returnValue: 'text', returnArray: false },
+				{ key: 'links', cssSelector: 'a', returnValue: 'attribute', attribute: 'href', returnArray: true },
+			] },
+			options: { trimValues: true },
+		} }],
+		connections: { Manual: { main: [[{ node: 'HTML Extract', type: 'main', index: 0 }]] } },
+	}, { html: '<main><h1>  Squared  </h1><a href="/docs">Docs</a><a href="/api">API</a></main>' }, { output: [{ heading: 'Squared', links: ['/docs', '/api'] }] });
+
 	await execute('Markdown v1 converts HTML using the published converter', 'n8n-nodes-base.markdown', 1, {
 		name: 'Published Markdown v1',
 		nodes: [manual, { id: 'markdown', name: 'Markdown', type: 'n8n-nodes-base.markdown', typeVersion: 1, parameters: { mode: 'htmlToMarkdown', html: '<h1>Squared</h1><p>Hello <strong>world</strong></p>', destinationKey: 'markdown', options: {} } }],
 		connections: { Manual: { main: [[{ node: 'Markdown', type: 'main', index: 0 }]] } },
 	}, { source: 'fixture' }, { output: [{ source: 'fixture', markdown: '# Squared\n\nHello **world**' }] });
+
+	await execute('Markdown v1 converts Markdown to HTML using the published converter', 'n8n-nodes-base.markdown', 1, {
+		name: 'Published Markdown v1 markdownToHtml',
+		nodes: [manual, { id: 'markdown-html', name: 'Markdown', type: 'n8n-nodes-base.markdown', typeVersion: 1, parameters: {
+			mode: 'markdownToHtml', markdown: '# Squared\n\nHello **world**', destinationKey: 'html', options: {},
+		} }],
+		connections: { Manual: { main: [[{ node: 'Markdown', type: 'main', index: 0 }]] } },
+	}, { source: 'fixture' }, { assertResult(result) {
+		assert.match(result.output[0].json.html, /<h1(?:\s[^>]*)?>Squared<\/h1>/);
+		assert.match(result.output[0].json.html, /Hello <strong>world<\/strong>/);
+	} });
 
 	const fixtureServer = createServer(async (request, response) => {
 		const url = new URL(request.url, 'http://127.0.0.1');

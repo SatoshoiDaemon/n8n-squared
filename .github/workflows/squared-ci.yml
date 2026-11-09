@@ -35,7 +35,7 @@ jobs:
         run: npm run compatibility:validate
       - name: Regenerate and verify compatibility matrix
         run: |
-          npm run compatibility:matrix
+          npm run compatibility:matrix -- --reuse-runtime-evidence
           git diff --exit-code -- docs/squared/compatibility-matrix.json docs/squared/compatibility-matrix.md docs/squared/compatibility-runtime-results.json
       - run: npm test
       - run: npm run build

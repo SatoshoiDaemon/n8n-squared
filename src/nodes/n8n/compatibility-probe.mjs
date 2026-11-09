@@ -19,6 +19,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 	const credentialProvider = async (reference, credentialType) => {
 		if (updatedFixtureCredentials.has(reference.id)) return updatedFixtureCredentials.get(reference.id);
 		if (credentialType === 'httpHeaderAuth' && reference.id === 'squared-fixture-credential') return { name: 'x-squared-token', value: 'fixture-token' };
+		if (credentialType === 'npmApi' && reference.id === 'squared-npm-credential') return { accessToken: 'fixture-npm-token', registryUrl: controlledApiServerUrl };
 		if (credentialType === 'githubApi' && reference.id === 'squared-github-credential') return { server: controlledApiServerUrl, accessToken: 'fixture-github-token' };
 		if (credentialType === 'oAuth2Api' && reference.id === 'squared-oauth2-credential') return {
 			clientId: 'fixture-client', clientSecret: 'fixture-secret', accessTokenUrl: `${controlledApiServerUrl}/oauth/token`,
@@ -74,6 +75,43 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		});
 		executions.push({ nodeType, typeVersion, test, status: 'passed', observedStatus: result.status, error: String(result.error), nodeRuns: result.nodeRuns });
 	};
+	if (discovery.packages.includes('@n8n/n8n-nodes-langchain')) {
+		const nodeType = '@n8n/n8n-nodes-langchain.textSplitterCharacterTextSplitter';
+		registry.register({
+			type: 'squared.compatibility.aiTextSplitterCapture',
+			versions: [1],
+			async execute(context) {
+				const splitter = await context.getInputConnectionData('ai_textSplitter', 0, 0);
+				return [[{ json: { chunks: await splitter.splitText('one two three') } }]];
+			},
+		});
+		const workflow = {
+			id: 'squared-compatibility-ai-text-splitter', name: 'Published Character Text Splitter v1',
+			nodes: [manual,
+				{ id: 'splitter', name: 'Character Splitter', type: nodeType, typeVersion: 1, parameters: { separator: ' ', chunkSize: 5, chunkOverlap: 0 } },
+				{ id: 'capture', name: 'Capture AI value', type: 'squared.compatibility.aiTextSplitterCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Character Splitter', type: 'main', index: 0 }]] },
+				'Character Splitter': { ai_textSplitter: [[{ node: 'Capture AI value', type: 'ai_textSplitter', index: 0 }]] },
+			},
+		};
+		const result = await engine.execute(workflow, { input: { fixture: true } });
+		assert.equal(result.status, 'succeeded', result.error);
+		assert.deepEqual(result.output.map((item) => item.json), [{ chunks: ['one', 'two', 'three'] }]);
+		assert.ok(result.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split'));
+		assert.equal(result.metadata.n8nSubNodeRuns['Character Splitter'][0].status, 'succeeded');
+		const contracts = runtime.getSnapshot().nodes.find((node) => node.nodeType === nodeType)?.interfacesUsed ?? [];
+		runtime.catalog.markValidatedWithEvidence(nodeType, {
+			typeVersion: 1, test: 'Character Text Splitter v1 splits a deterministic input through a real AI connection',
+			operation: 'splitText("one two three")',
+			contracts: [...new Set([...contracts, 'ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData', 'ISupplyDataFunctions.logAiEvent'])],
+			expected: { chunks: ['one', 'two', 'three'], aiExecutionLogged: true },
+			observed: { chunks: result.output[0]?.json.chunks, aiExecutionLogged: result.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split') },
+			status: 'passed',
+		});
+		executions.push({ nodeType, typeVersion: 1, test: 'Character Text Splitter v1 splits a deterministic input through a real AI connection', status: 'passed', output: result.output, metadata: result.metadata });
+	}
 
 	await execute('Set v3.5 expression and keep input fields', 'n8n-nodes-base.set', 3.5, {
 		name: 'Published Set v3.5',
@@ -371,6 +409,14 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			return;
 		}
 		response.writeHead(200, { 'content-type': 'application/json' });
+		if (url.pathname === '/squared-fixture/1.0.0') {
+			const credentialAccepted = request.headers.authorization === 'Bearer fixture-npm-token';
+			response.end(JSON.stringify({
+				name: 'squared-fixture', version: '1.0.0',
+				description: credentialAccepted ? 'local declarative routing fixture' : 'credential was not applied',
+			}));
+			return;
+		}
 		if (url.pathname === '/oauth/token') {
 			let body = '';
 			for await (const chunk of request) body += chunk;
@@ -396,6 +442,15 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		const address = fixtureServer.address();
 		if (!address || typeof address === 'string') throw new Error('HTTP fixture did not bind to an ephemeral port');
 		controlledApiServerUrl = `http://127.0.0.1:${address.port}`;
+		await execute('Npm v1 getMetadata routes a relative request through the published declarative API and credential schema', 'n8n-nodes-base.npm', 1, {
+			name: 'Published Npm v1 declarative getMetadata',
+			nodes: [manual, {
+				id: 'npm', name: 'Npm', type: 'n8n-nodes-base.npm', typeVersion: 1,
+				parameters: { resource: 'package', operation: 'getMetadata', packageName: 'squared-fixture', packageVersion: '1.0.0' },
+				credentials: { npmApi: { id: 'squared-npm-credential', name: 'Fixture NPM API' } },
+			}],
+			connections: { Manual: { main: [[{ node: 'Npm', type: 'main', index: 0 }]] } },
+		}, { source: 'fixture' }, { output: [{ name: 'squared-fixture', version: '1.0.0', description: 'local declarative routing fixture' }] });
 		await execute('HTTP Request v4.5 to local controlled JSON fixture', 'n8n-nodes-base.httpRequest', 4.5, {
 			name: 'Published HTTP Request v4.5',
 			nodes: [manual, {
@@ -466,6 +521,49 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 	} finally {
 		await new Promise((resolve, reject) => fixtureServer.close((error) => error ? reject(error) : resolve()));
 	}
+
+	const intervalWorkflow = {
+		id: 'squared-compatibility-interval-trigger', name: 'Published Interval Trigger activation', active: true,
+		nodes: [
+			{ id: 'interval-trigger', name: 'Interval', type: 'n8n-nodes-base.interval', typeVersion: 1, parameters: { interval: 1, unit: 'seconds' } },
+			{ id: 'interval-noop', name: 'After Interval', type: 'n8n-nodes-base.noOp', typeVersion: 1, parameters: {} },
+		],
+		connections: { Interval: { main: [[{ node: 'After Interval', type: 'main', index: 0 }]] } },
+	};
+	const triggerExecutions = new Map();
+	const triggerRuntimeState = new Map();
+	const triggerStore = {
+		async listWorkflows() { return [intervalWorkflow]; },
+		async getWorkflowRuntimeState(id) { return triggerRuntimeState.get(id) ?? {}; },
+		async saveWorkflowRuntimeState(id, state) { triggerRuntimeState.set(id, state); },
+		async createExecution(execution) { triggerExecutions.set(execution.id, { ...execution, status: 'queued' }); },
+		async startExecution(id) { triggerExecutions.get(id).status = 'running'; },
+		async finishExecution(id, output) { Object.assign(triggerExecutions.get(id), { status: 'succeeded', output }); },
+		async failExecution(id, error) { Object.assign(triggerExecutions.get(id), { status: 'failed', error: String(error) }); },
+	};
+	const triggerQueue = new ExecutionEngine({ store: triggerStore, registry: new Map(), graphEngine: engine, concurrency: 1, maxQueued: 4 });
+	const triggerService = new WorkflowService(triggerStore, triggerQueue, runtime, credentialProvider);
+	await triggerService.reconcileTriggers();
+	await new Promise((resolve) => setTimeout(resolve, 1_100));
+	await triggerQueue.drain();
+	assert.equal(triggerExecutions.size, 1, 'the official Interval trigger should emit one event');
+	const intervalExecution = [...triggerExecutions.values()][0];
+	assert.equal(intervalExecution.status, 'succeeded', intervalExecution.error);
+	assert.deepEqual(intervalExecution.output.output.map((item) => item.json), [{}]);
+	intervalWorkflow.active = false;
+	await triggerService.reconcileTriggers();
+	await new Promise((resolve) => setTimeout(resolve, 1_100));
+	await triggerQueue.drain();
+	assert.equal(triggerExecutions.size, 1, 'deactivation should close the official Interval timer');
+	runtime.catalog.markValidatedWithEvidence('n8n-nodes-base.interval', {
+		typeVersion: 1, test: 'Interval v1 emits through activation, executes a real graph, and closes on deactivation',
+		operation: 'trigger:interval=1 seconds; activate/deactivate',
+		contracts: ['ITriggerFunctions', 'ITriggerFunctions.emit', 'ITriggerFunctions.helpers.returnJsonArray', 'ExecutionEngine.reconcileTriggers', 'WorkflowService.reconcileTriggers'],
+		expected: { status: 'succeeded', output: [{}], eventsAfterDeactivation: 0 },
+		observed: { status: intervalExecution.status, output: intervalExecution.output.output.map((item) => item.json), eventsAfterDeactivation: triggerExecutions.size - 1 },
+		status: 'passed',
+	});
+	executions.push({ nodeType: 'n8n-nodes-base.interval', typeVersion: 1, test: 'Interval v1 emits through activation, executes a real graph, and closes on deactivation', status: 'passed', output: intervalExecution.output.output, deactivated: true });
 
 	const webhookWorkflow = {
 		id: 'squared-compatibility-webhook-fixture',
@@ -593,6 +691,51 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		});
 		executions.push({ nodeType: type, typeVersion: 1.1, test: `Wait v1.1 stores and resumes a deterministic execution with resume=${resumeMode}`, status: 'passed', firstStatus: 'waiting', resumedStatus: completed.status });
 	}
+}
+
+/** Import every published node class and resolve its adapter without marking unexecuted nodes validated. */
+export async function loadN8nPackageNodeStates(packagesDirectory) {
+	const registry = new NodeAdapterRegistry();
+	const runtime = new N8nNodePackageRuntime(packagesDirectory);
+	const discovery = await runtime.initialize(registry);
+	const capabilities = {};
+	for (const node of runtime.getSnapshot().nodes) {
+		if (node.enterpriseRestricted) continue;
+		try {
+			const capability = await runtime.getNodeCapabilities(node.nodeType);
+			let adapterAvailable = false;
+			let adapterFailure;
+			try {
+				const adapter = await registry.resolve(node.nodeType, capability.version);
+				adapterAvailable = Boolean(adapter);
+				if (!adapter) throw new Error(`No runtime adapter is registered for ${node.nodeType}@${capability.version}`);
+			} catch (error) {
+				adapterFailure = error instanceof Error ? error.message : String(error);
+			}
+			capabilities[node.nodeType] = {
+				version: capability.version,
+				methods: {
+					execute: capability.execute,
+					trigger: capability.trigger,
+					poll: capability.poll,
+					webhook: capability.webhook,
+					supplyData: capability.supplyData,
+					declarative: capability.declarative,
+				},
+				adapterAvailable,
+				...(adapterFailure ? { adapterFailure } : {}),
+			};
+		} catch (error) {
+			capabilities[node.nodeType] = { adapterAvailable: false, loadFailure: error instanceof Error ? error.message : String(error) };
+		}
+	}
+	return {
+		packages: discovery.packages,
+		nodesDiscovered: discovery.nodes.length,
+		capabilities,
+		nodes: runtime.getSnapshot().nodes,
+		credentials: runtime.getSnapshot().credentials,
+	};
 }
 
 function describeOperation(workflow, nodeType) {

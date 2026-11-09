@@ -21,7 +21,7 @@ export interface GraphNodeContext {
 	getInputData(inputIndex?: number, connectionType?: string): NodeExecutionData[];
 	getInputConnectionData(connectionType: string, inputIndex?: number, itemIndex?: number): Promise<unknown>;
 	getNodeParameter<T = unknown>(parameterName: string, itemIndex?: number, fallbackValue?: T, options?: NodeParameterOptions): T;
-	evaluateExpression(expression: string, itemIndex?: number, fallbackValue?: unknown, throwOnMissing?: boolean): unknown;
+	evaluateExpression(expression: string, itemIndex?: number, fallbackValue?: unknown, throwOnMissing?: boolean, additional?: Record<string, unknown>): unknown;
 	getNode(): WorkflowNodeDocument;
 	getWorkflow(): WorkflowDocument;
 	getMode(): GraphNodeContext['mode'];
@@ -44,6 +44,9 @@ export interface GraphNodeContext {
 	getParamsData(): Record<string, unknown>;
 	getContext(type: 'flow' | 'node'): Record<string, unknown>;
 	sendMessageToUI(...args: unknown[]): void;
+	addInputData(connectionType: string, data: unknown[][], runIndex?: number): { index: number };
+	addOutputData(connectionType: string, runIndex: number, data: unknown[][] | Error, metadata?: Record<string, unknown>, sourceNodeRunIndex?: number): void;
+	logAiEvent(eventName: string, payload?: string): void;
 	prepareOutputData<T extends NodeExecutionData[]>(items: T, inputIndex?: number): Promise<[T]>;
 	putExecutionToWait(waitTill: Date, options?: { acceptsResumeRequest?: boolean }): Promise<void>;
 	getPendingWait(): GraphWaitState | undefined;
@@ -520,12 +523,13 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 	let pendingWait: Omit<GraphWaitState, 'nodeName' | 'input'> | undefined;
 	const flattenInputs = inputPorts.flat();
 	const priorNodeItems = Object.fromEntries([...outputsByNode].map(([name, data]) => [name, nodeExecutionPorts(data.main ?? []).flat()]));
-	const baseContext = (itemIndex: number): N8nExpressionContext => ({
+	const baseContext = (itemIndex: number, additional: Record<string, unknown> = {}): N8nExpressionContext => ({
 		item: flattenInputs[itemIndex] ?? { json: {} },
 		inputItems: flattenInputs,
 		priorNodeItems,
 		execution: { id: executionId, mode, ...Object.fromEntries(executionMetadata) },
 		workflow: { id: graph.document.id, name: graph.document.name },
+		additional: { $parameter: node.parameters ?? {}, $vars: {}, ...additional },
 	});
 	const parameterAtPath = (path: string): unknown => {
 		let value: unknown = node.parameters ?? {};
@@ -572,9 +576,9 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 			if (options.rawExpressions) return value as T;
 			return resolveParameterTree(value, baseContext(itemIndex)) as T;
 		},
-		evaluateExpression(expression: string, itemIndex = 0, fallbackValue?: unknown, throwOnMissing = true) {
+		evaluateExpression(expression: string, itemIndex = 0, fallbackValue?: unknown, throwOnMissing = true, additional: Record<string, unknown> = {}) {
 			try {
-				return evaluateN8nExpression(expression, baseContext(itemIndex));
+				return evaluateN8nExpression(expression, baseContext(itemIndex, additional));
 			} catch (error) {
 				if (throwOnMissing) throw error;
 				return fallbackValue;
@@ -625,6 +629,28 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 			return value;
 		},
 		sendMessageToUI() {},
+		addInputData(connectionType: string, data: unknown[][], runIndex?: number) {
+			const runs = getLoggedSubNodeRuns();
+			const nodeRuns = runs[node.name] ?? (runs[node.name] = []);
+			const index = nodeRuns.length;
+			nodeRuns.push({ connectionType, status: 'running', input: cloneForExecutionMetadata(data), ...(runIndex !== undefined ? { sourceRunIndex: runIndex } : {}) });
+			return { index };
+		},
+		addOutputData(connectionType: string, runIndex: number, data: unknown[][] | Error, metadata?: Record<string, unknown>, sourceNodeRunIndex?: number) {
+			const runs = getLoggedSubNodeRuns();
+			const nodeRuns = runs[node.name] ?? (runs[node.name] = []);
+			const loggedRun = nodeRuns[runIndex] ?? (nodeRuns[runIndex] = { connectionType, status: 'running' });
+			loggedRun.connectionType = connectionType;
+			loggedRun.status = data instanceof Error ? 'failed' : 'succeeded';
+			loggedRun.output = cloneForExecutionMetadata(data);
+			if (metadata !== undefined) loggedRun.metadata = cloneForExecutionMetadata(metadata);
+			if (sourceNodeRunIndex !== undefined) loggedRun.sourceRunIndex = sourceNodeRunIndex;
+		},
+		logAiEvent(eventName: string, payload?: string) {
+			const events = (executionMetadata.get('n8nAiEvents') as Array<Record<string, unknown>> | undefined) ?? [];
+			events.push({ event: eventName, ...(payload !== undefined ? { payload } : {}), nodeName: node.name });
+			executionMetadata.set('n8nAiEvents', events);
+		},
 		async prepareOutputData<T extends NodeExecutionData[]>(items: T) { return [items]; },
 		async putExecutionToWait(waitTill: Date, options: { acceptsResumeRequest?: boolean } = {}) {
 			const timestamp = waitTill instanceof Date ? waitTill.getTime() : Number.NaN;
@@ -664,6 +690,16 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 		if (!value) { value = {}; contextData.set(key, value); }
 		return value;
 	}
+
+	function getLoggedSubNodeRuns(): Record<string, Array<Record<string, unknown>>> {
+		const runs = (executionMetadata.get('n8nSubNodeRuns') as Record<string, Array<Record<string, unknown>>> | undefined) ?? {};
+		executionMetadata.set('n8nSubNodeRuns', runs);
+		return runs;
+	}
+}
+
+function cloneForExecutionMetadata(value: unknown): unknown {
+	try { return structuredClone(value); } catch { return String(value); }
 }
 
 function createBasicHelpers(
@@ -787,7 +823,16 @@ function extensionForMimeType(mimeType: string): string {
 async function executeHttpRequest(options: Record<string, unknown>): Promise<unknown> {
 	const address = options.uri ?? options.url;
 	if (typeof address !== 'string' || !address) throw new Error('HTTP helper needs a non-empty uri or url');
-	const url = new URL(address);
+	let url: URL;
+	try {
+		url = new URL(address);
+	} catch (error) {
+		if (typeof options.baseURL !== 'string' || !options.baseURL) throw error;
+		const base = new URL(options.baseURL);
+		const basePath = base.pathname.replace(/\/+$/, '');
+		const requestPath = address.replace(/^\/+/, '');
+		url = new URL(`${base.origin}${basePath}/${requestPath}`);
+	}
 	const query = (options.qs ?? options.query) as Record<string, unknown> | undefined;
 	if (query && typeof query === 'object') {
 		for (const [key, rawValue] of Object.entries(query)) {

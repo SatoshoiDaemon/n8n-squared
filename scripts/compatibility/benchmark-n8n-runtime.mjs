@@ -152,7 +152,7 @@ console.log(JSON.stringify({
 			heapUsedDeltaBytesFromCatalog: afterMultiNodeWarmRuns.heapUsed - afterCatalog.heapUsed,
 		},
 	},
-	limitations: ['Measurements ran in a single Node 26 process with locally installed official packages; the PR #6 baseline ran on Node 24.19.', 'The workflows use one input item, deterministic local node operations and an in-memory graph engine.', 'RSS deltas are process samples, not Square Cloud steady-state measurements.'],
+	limitations: [`Measurements ran on Node ${process.versions.node} with locally installed official packages; the PR #6 baseline ran on Node 24.19.`, 'The workflows use one input item, deterministic local node operations and an in-memory graph engine.', 'RSS deltas are process samples, not Square Cloud steady-state measurements.'],
 }, null, 2));
 
 function percentile(values, fraction) {

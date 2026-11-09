@@ -21,7 +21,7 @@ export interface CatalogNode {
 	manifestPath: string;
 	descriptionPath: string;
 	version: number | number[] | null;
-	executionType: 'execute' | 'declarative' | 'trigger' | 'poll' | 'webhook' | 'unknown';
+	executionType: 'execute' | 'declarative' | 'supplyData' | 'trigger' | 'poll' | 'webhook' | 'unknown';
 	dependencies: string[];
 	interfacesUsed: string[];
 	compatibility: NodeCompatibilityState;
@@ -204,7 +204,7 @@ export class N8nPackageCatalog {
 			'Static node metadata has no parameter properties array.',
 			'Node description has no properties array.',
 			'No successful node execution has exercised this node version against Squared contracts yet.',
-		].includes(failure) && (executable || (!failure.startsWith('Node method failed before producing') && !failure.startsWith('Required runtime contract is unavailable:'))));
+		].includes(failure) && !failure.startsWith('Node module load failed:') && !failure.startsWith('Runtime class has no supported lifecycle method:') && (executable || (!failure.startsWith('Node method failed before producing') && !failure.startsWith('Required runtime contract is unavailable:'))));
 		if (!node.compatibility.configurable) node.knownFailures.push('Runtime node description has no properties array.');
 		if (!executable) node.knownFailures.push('No successful node execution has exercised this node version against Squared contracts yet.');
 	}
@@ -242,6 +242,24 @@ export class N8nPackageCatalog {
 			? `Required runtime contract is unavailable: ${missingContract}`
 			: `Node method failed before producing a successful result (${error instanceof Error ? error.name : 'Error'}).`;
 		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('Node method failed before producing') && !item.startsWith('Required runtime contract is unavailable:')), reason])];
+	}
+
+	markRuntimeLoadFailure(nodeType: string, error: unknown): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.loaded = false;
+		node.compatibility.executable = false;
+		const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+		const reason = `Node module load failed: ${detail}`;
+		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('Node module load failed:')), reason])];
+	}
+
+	markRuntimeNoSupportedLifecycle(nodeType: string): void {
+		const node = [...this.nodes.values()].find((item) => item.nodeType === nodeType);
+		if (!node) return;
+		node.compatibility.executable = false;
+		const reason = 'Runtime class has no supported lifecycle method: execute, trigger, poll, webhook, supplyData, or declarative REST routing.';
+		node.knownFailures = [...new Set([...node.knownFailures.filter((item) => !item.startsWith('No successful node execution has exercised') && !item.startsWith('Runtime class has no supported lifecycle method:')), reason])];
 	}
 
 	markExecutable(nodeType: string): void {

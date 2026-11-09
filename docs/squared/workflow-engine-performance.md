@@ -2,34 +2,33 @@
 
 ## Executor do Squared
 
-`npm run compatibility:benchmark` foi executado em Node.js `26.13.0`, com 60 aquecimentos e 300 amostras por executor. O workflow sintético contém um trigger manual e um node Set; não acessa rede nem storage persistente.
+`npm run compatibility:benchmark` foi executado em Node.js `24.19.0` e `26.13.0`, com 60 aquecimentos e 300 amostras por executor. O workflow sintético contém um trigger manual e um node Set; não acessa rede nem storage persistente.
 
-| Medida | Executor de grafo | Executor legado |
-| --- | ---: | ---: |
-| Importação dos módulos | 251.255 ms | — |
-| RSS / heap / memória externa na importação | +21,778,432 / +4,634,696 / +4,061,656 bytes | — |
-| p50 / p95 por execução | 0.063 / 0.344 ms | 0.002 / 0.009 ms de processamento do node |
-| Vazão ponta a ponta observada | 7,295 execuções/s | 49,175 execuções/s |
-| Vazão do processamento interno do node | — | 226,723 execuções/s |
+| Node.js | Importação dos módulos | RSS / heap adicional na importação | p50 / p95 por execução do grafo | Vazão ponta a ponta |
+| --- | ---: | ---: | ---: | ---: |
+| 24.19.0 | 99.910 ms | +28,651,520 / +4,635,536 bytes | 0.060 / 0.163 ms | 12,762 execuções/s |
+| 26.13.0 | 102.123 ms | +18,841,600 / +4,640,472 bytes | 0.049 / 0.109 ms | 16,229 execuções/s |
 
-O resultado anterior do PR #6 foi medido em Node.js `24.19.0`: p50 `0.053–0.060 ms`, p95 `0.173–0.243 ms` e vazão `10,779–13,518 execuções/s` para o grafo. Como versão do Node e medições variam, essa é uma referência histórica, não uma comparação controlada.
+No executor legado, a execução ponta a ponta foi de 124,673 execuções/s no Node 24.19.0 e 147,958 execuções/s no Node 26.13.0; a parte interna do node teve p50 de 0.002 ms nas duas medições.
+
+No Node 24.19.0, a nova medição ficou no intervalo histórico do PR #6 para p50 (`0.053–0.060 ms`) e vazão (`10,779–13,518 execuções/s`); o p95 observado foi `0.163 ms`, abaixo do intervalo anterior de `0.173–0.243 ms`. São amostras locais e a diferença não é uma comparação estatística controlada.
 
 ## Classes oficiais n8n
 
-`npm run compatibility:benchmark:n8n` mediu carregamento sob demanda e execução com `n8n-nodes-base@2.42.5`, no Windows local, com 100 amostras e 20 aquecimentos. A descoberta lê manifests de 569 tipos, incluindo 444 do pacote base, sem importar cada módulo JavaScript.
+`npm run compatibility:benchmark:n8n` mediu carregamento sob demanda e execução com `n8n-nodes-base@2.42.5`, no Windows local e no Node 24.19.0, com 100 amostras e 20 aquecimentos. A descoberta lê manifests de 569 tipos, incluindo 444 do pacote base, sem importar cada módulo JavaScript.
 
 | Medida | Set v3.5 | Workflow Set → Date & Time → Crypto → Merge → NoOp |
 | --- | ---: | ---: |
-| Descoberta do catálogo | 1,169.708 ms | — |
-| RSS / heap adicional no catálogo | +13,914,112 / +3,069,224 bytes | — |
-| Primeiro carregamento e execução | 1,653.856 ms | 2,542.204 ms |
-| RSS / heap no primeiro uso | +37,625,856 / +20,650,656 bytes | +50,782,208 / +22,080,104 bytes |
-| Média aquecida | 0.308 ms | 5.378 ms |
-| p50 / p95 aquecidos | 0.149 / 1.106 ms | 4.060 / 11.239 ms |
-| Vazão observada | 3,234 execuções/s | 186 execuções/s |
-| RSS / heap após aquecimento, delta do catálogo | +40,169,472 / +20,899,936 bytes | +95,727,616 / +43,676,352 bytes |
+| Descoberta do catálogo | 580–3,947 ms | — |
+| RSS / heap adicional no catálogo | +13.7–19.6 / +3.16 MB | — |
+| Primeiro carregamento e execução | 739–2,014 ms | 1,149–4,061 ms |
+| RSS / heap no primeiro uso | +35.4–37.6 / +20.85 MB | +57.5–59.7 / +22.08 MB |
+| Média aquecida | 0.157–0.772 ms | 3.437–4.177 ms |
+| p50 / p95 aquecidos | 0.141–0.234 / 0.217–0.932 ms | 3.177–3.803 / 4.796–6.559 ms |
+| Vazão observada | 1,287–6,328 execuções/s | 239–290 execuções/s |
+| RSS / heap após 20 aquecimentos + 100 execuções, delta do catálogo | +37.1–41.4 / +21.14–21.23 MB | +97.4–120.7 / +43.92 MB |
 
-O workflow multi-node conecta dois inputs ao Merge. O primeiro uso inclui importação da classe e dependências. Os valores são amostras do processo, não dimensionamento de Square Cloud. O benchmark do PR #6 usava Node 24 e um único Set; ele não é comparável diretamente com estas medições em Node 26. Repita a medição no runtime e perfil de memória do ambiente de produção.
+As faixas do Node 24.19.0 vêm de três processos independentes com o mesmo pacote. A descoberta e o primeiro carregamento variaram bastante; a execução aquecida também teve um outlier. Um processo separado no Node 26.13.0 mediu descoberta em 418 ms, Set em p50/p95 de 0.135/0.222 ms e workflow multi-node em p95 de 3.555 ms. O workflow multi-node conecta dois inputs ao Merge e o primeiro uso inclui importação das classes e dependências. Essas amostras locais não são dimensionamento de Square Cloud nem comparação controlada entre versões. O PR #6 não tinha benchmark equivalente de carregamento de nodes oficiais.
 
 ## Limites da medição
 

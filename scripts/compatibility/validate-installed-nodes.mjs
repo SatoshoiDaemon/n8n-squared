@@ -28,7 +28,7 @@ const runtimeNodes = loadState.nodes.map((node) => {
 		package: node.packageName,
 		packageVersion: node.packageVersion,
 		node: node.nodeType,
-		manifestPath: node.manifestPath,
+		manifestPath: node.manifestPath.replaceAll('\\', '/'),
 		version: capability?.version ?? node.version,
 		supportedVersions: node.version,
 		interfacesUsed: [...new Set([...node.interfacesUsed, ...(validation?.interfacesUsed ?? [])])].sort(),
@@ -42,8 +42,6 @@ const runtimeNodes = loadState.nodes.map((node) => {
 	};
 });
 const report = {
-	nodeVersion: process.versions.node,
-	platform: process.platform,
 	package: 'n8n-nodes-base',
 	packageVersion: probe.nodes.find((node) => node.packageName === 'n8n-nodes-base')?.packageVersion ?? 'unknown',
 	packages: loadState.packages,

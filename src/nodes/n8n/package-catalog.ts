@@ -1,5 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 
 export type CompatibilityStage = 'discovered' | 'loaded' | 'configurable' | 'executable' | 'validated';
 
@@ -142,7 +142,7 @@ export class N8nPackageCatalog {
 	async loadDescriptions(): Promise<{ nodes: CatalogNode[]; credentials: CatalogCredential[] }> {
 		for (const node of this.nodes.values()) {
 			if (node.enterpriseRestricted) continue;
-			const description = await readJson<Record<string, unknown>>(node.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(node.descriptionPath).catch(() => null);
 			if (!description) {
 				node.knownFailures = [...new Set([...node.knownFailures, 'Generated node description JSON is missing or unreadable.'])];
 				continue;
@@ -161,7 +161,7 @@ export class N8nPackageCatalog {
 		}
 		for (const credential of this.credentials.values()) {
 			if (credential.enterpriseRestricted) continue;
-			const description = await readJson<Record<string, unknown>>(credential.descriptionPath).catch(() => null);
+			const description = await readJsonWithCaseInsensitiveFallback<Record<string, unknown>>(credential.descriptionPath).catch(() => null);
 			if (!description) continue;
 			credential.description = asObject(description.credential) ?? description;
 			credential.loaded = true;
@@ -316,6 +316,29 @@ function resolvePackagePath(packageDirectory: string, relativePath: string): str
 
 async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, 'utf8')) as T;
+}
+
+async function readJsonWithCaseInsensitiveFallback<T>(path: string): Promise<T> {
+	try {
+		return await readJson<T>(path);
+	} catch (error) {
+		const actualPath = await resolveCaseInsensitivePath(path).catch(() => null);
+		if (!actualPath || actualPath === path) throw error;
+		return readJson<T>(actualPath);
+	}
+}
+
+async function resolveCaseInsensitivePath(path: string): Promise<string | null> {
+	const absolutePath = resolve(path);
+	const root = parse(absolutePath).root;
+	let current = root;
+	for (const segment of absolutePath.slice(root.length).split(sep).filter(Boolean)) {
+		const entries = await readdir(current).catch(() => []);
+		const actualSegment = entries.find((entry) => entry.toLowerCase() === segment.toLowerCase());
+		if (!actualSegment) return null;
+		current = join(current, actualSegment);
+	}
+	return current;
 }
 
 function basenameWithoutExtension(path: string): string {

@@ -80,7 +80,7 @@ if (process.env.SQUARED_N8N_PACKAGES_DIR) {
 			package: node.packageName,
 			packageVersion: node.packageVersion,
 			node: node.nodeType,
-			manifestPath: node.manifestPath,
+			manifestPath: node.manifestPath.replaceAll('\\', '/'),
 			version: capability?.version ?? node.version,
 			supportedVersions: node.version,
 			interfacesUsed: [...new Set([...node.interfacesUsed, ...(validation?.interfacesUsed ?? [])])].sort(),
@@ -94,8 +94,6 @@ if (process.env.SQUARED_N8N_PACKAGES_DIR) {
 		};
 	});
 	runtimeEvidence = {
-		nodeVersion: process.versions.node,
-		platform: process.platform,
 		package: 'n8n-nodes-base',
 		packageVersion: probe.nodes.find((node) => node.packageName === 'n8n-nodes-base')?.packageVersion ?? 'unknown',
 		packages: [...new Map(loadState.nodes.map((node) => [node.packageName, node.packageVersion])).entries()].map(([name, version]) => `${name}@${version}`),
@@ -155,8 +153,6 @@ const summary = {
 		}),
 	communityPackages: { discovered: 0, limitation: 'No community package list is available from the configured reference instance.' },
 	runtimeValidation: runtimeEvidence ? {
-		nodeVersion: runtimeEvidence.nodeVersion,
-		platform: runtimeEvidence.platform,
 		package: runtimeEvidence.package,
 		packageVersion: runtimeEvidence.packageVersion,
 		packages: runtimeEvidence.packages,
@@ -199,7 +195,7 @@ function renderSummary(matrix, credentials) {
 		`| Pacote | Versão do manifest | Credenciais descobertas |\n| --- | ---: | ---: |\n${credentialLines}\n\n` +
 		`## Etapas\n\n| Estado | Cobertura |\n| --- | ---: |\n${stageLines}\n\n` +
 		`Estados: descoberto vem dos manifests; carregado exige importar a classe publicada; configurável exige uma descrição com propriedades; executável exige um adapter de lifecycle que o runtime consiga resolver; validado exige ao menos um cenário real concluído. Um cenário valida apenas a versão e a operação registradas. O JSON também registra dependências, interfaces, licença, capabilities e falhas por node.\n\n` +
-		`${matrix.runtimeValidation ? `A validação local carregou ${matrix.runtimeValidation.nodesLoaded}/${matrix.runtimeValidation.nodesDiscovered} classes e executou ${matrix.runtimeValidation.deterministicExecutions} casos determinísticos com ${runtimePackageLabel} no Node ${matrix.runtimeValidation.nodeVersion}; ${matrix.runtimeValidation.nodesValidated} tipos passaram cenários reais e ${credentialSchemaLabel} foram carregados. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json).` : 'Ainda não há evidência de execução do pacote instalado. Defina SQUARED_N8N_PACKAGES_DIR e execute npm run compatibility:validate.'} Community packages descobertos na referência: não disponíveis.\n`;
+		`${matrix.runtimeValidation ? `A validação carregou ${matrix.runtimeValidation.nodesLoaded}/${matrix.runtimeValidation.nodesDiscovered} classes e executou ${matrix.runtimeValidation.deterministicExecutions} casos determinísticos com ${runtimePackageLabel}; ${matrix.runtimeValidation.nodesValidated} tipos passaram cenários reais e ${credentialSchemaLabel} foram carregados. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json).` : 'Ainda não há evidência de execução do pacote instalado. Defina SQUARED_N8N_PACKAGES_DIR e execute npm run compatibility:validate.'} Community packages descobertos na referência: não disponíveis.\n`;
 }
 
 function findNodeType(source) {

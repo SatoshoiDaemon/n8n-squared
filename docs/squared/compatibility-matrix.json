@@ -222,8 +222,6 @@
       "limitation": "No community package list is available from the configured reference instance."
     },
     "runtimeValidation": {
-      "nodeVersion": "26.13.0",
-      "platform": "win32",
       "package": "n8n-nodes-base",
       "packageVersion": "2.42.5",
       "packages": [

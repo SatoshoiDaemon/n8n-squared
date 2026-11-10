@@ -10,8 +10,8 @@
   "nodeTypesLoaded": 567,
   "nodeTypesConfigurable": 567,
   "nodeTypesExecutable": 567,
-  "nodeTypesValidated": 49,
-  "deterministicExecutions": 69,
+  "nodeTypesValidated": 50,
+  "deterministicExecutions": 70,
   "differentialAgainstN8n": false,
   "nodes": [
     {
@@ -791,10 +791,30 @@
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.getWorkflow",
         "IExecuteFunctions.getWorkflowDataProxy",
+        "IExecuteFunctions.getWorkflowStaticData",
         "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "IExecuteFunctions.helpers.constructExecutionMetaData",
+        "IExecuteFunctions.helpers.copyInputItems",
+        "IExecuteFunctions.helpers.createDeferredPromise",
+        "IExecuteFunctions.helpers.detectBinaryEncoding",
+        "IExecuteFunctions.helpers.getBinaryDataBuffer",
+        "IExecuteFunctions.helpers.getBinaryDataStream",
+        "IExecuteFunctions.helpers.httpRequest",
+        "IExecuteFunctions.helpers.httpRequestWithAuthentication",
+        "IExecuteFunctions.helpers.normalizeItems",
+        "IExecuteFunctions.helpers.prepareBinaryData",
+        "IExecuteFunctions.helpers.refreshOAuth2Token",
+        "IExecuteFunctions.helpers.request",
+        "IExecuteFunctions.helpers.requestOAuth1",
+        "IExecuteFunctions.helpers.requestOAuth2",
+        "IExecuteFunctions.helpers.requestWithAuthentication",
+        "IExecuteFunctions.helpers.requestWithAuthenticationPaginated",
+        "IExecuteFunctions.helpers.returnJsonArray",
         "IExecuteFunctions.isConsoleOutputRedacted",
         "IExecuteFunctions.logger",
         "IExecuteFunctions.sendMessageToUI",
+        "INodeExecutionData",
         "INodeType"
       ],
       "capabilities": {
@@ -814,9 +834,83 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
-      "validationEvidence": [],
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "LangChain Code v1 reads current and linked node data through the official workflow data proxy",
+          "operation": "run the official LangChain Code node with $json, $node, $workflow, and $execution proxy values",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.addInputData",
+            "IExecuteFunctions.addOutputData",
+            "IExecuteFunctions.executeWorkflow",
+            "IExecuteFunctions.getExecutionCancelSignal",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeOutputs",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflowDataProxy",
+            "IExecuteFunctions.getWorkflowStaticData",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "IExecuteFunctions.helpers.constructExecutionMetaData",
+            "IExecuteFunctions.helpers.copyInputItems",
+            "IExecuteFunctions.helpers.createDeferredPromise",
+            "IExecuteFunctions.helpers.detectBinaryEncoding",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "IExecuteFunctions.helpers.getBinaryDataStream",
+            "IExecuteFunctions.helpers.httpRequest",
+            "IExecuteFunctions.helpers.httpRequestWithAuthentication",
+            "IExecuteFunctions.helpers.normalizeItems",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "IExecuteFunctions.helpers.refreshOAuth2Token",
+            "IExecuteFunctions.helpers.request",
+            "IExecuteFunctions.helpers.requestOAuth1",
+            "IExecuteFunctions.helpers.requestOAuth2",
+            "IExecuteFunctions.helpers.requestWithAuthentication",
+            "IExecuteFunctions.helpers.requestWithAuthenticationPaginated",
+            "IExecuteFunctions.helpers.returnJsonArray",
+            "IExecuteFunctions.logger",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "currentPrompt": "workflow proxy fixture prompt",
+                "priorPrompt": "workflow proxy fixture prompt",
+                "workflowName": "Published LangChain Code v1 workflow data proxy",
+                "executionMode": "test",
+                "childValue": "inline child output",
+                "childOutputCount": 1
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "currentPrompt": "workflow proxy fixture prompt",
+                "priorPrompt": "workflow proxy fixture prompt",
+                "workflowName": "Published LangChain Code v1 workflow data proxy",
+                "executionMode": "test",
+                "childValue": "inline child output",
+                "childOutputCount": 1
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
       "knownFailures": []
     },
     {

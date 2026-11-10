@@ -229,8 +229,8 @@
         "n8n-nodes-base@2.42.5"
       ],
       "nodesDiscovered": 569,
-      "deterministicExecutions": 69,
-      "nodesValidated": 49,
+      "deterministicExecutions": 70,
+      "nodesValidated": 50,
       "nodesLoaded": 567,
       "nodesConfigurable": 567,
       "nodesExecutable": 567,
@@ -245,9 +245,9 @@
       "loaded": 567,
       "configurable": 567,
       "executable": 567,
-      "validated": 49
+      "validated": 50
     },
-    "fullyValidatedNodes": 49,
+    "fullyValidatedNodes": 50,
     "knownLimitations": [
       "Executable means an adapter can dispatch to a supported published lifecycle; validated means at least one deterministic operation completed successfully.",
       "Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.",
@@ -1133,7 +1133,26 @@
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.getWorkflow",
         "IExecuteFunctions.getWorkflowDataProxy",
+        "IExecuteFunctions.getWorkflowStaticData",
         "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.assertBinaryData",
+        "IExecuteFunctions.helpers.constructExecutionMetaData",
+        "IExecuteFunctions.helpers.copyInputItems",
+        "IExecuteFunctions.helpers.createDeferredPromise",
+        "IExecuteFunctions.helpers.detectBinaryEncoding",
+        "IExecuteFunctions.helpers.getBinaryDataBuffer",
+        "IExecuteFunctions.helpers.getBinaryDataStream",
+        "IExecuteFunctions.helpers.httpRequest",
+        "IExecuteFunctions.helpers.httpRequestWithAuthentication",
+        "IExecuteFunctions.helpers.normalizeItems",
+        "IExecuteFunctions.helpers.prepareBinaryData",
+        "IExecuteFunctions.helpers.refreshOAuth2Token",
+        "IExecuteFunctions.helpers.request",
+        "IExecuteFunctions.helpers.requestOAuth1",
+        "IExecuteFunctions.helpers.requestOAuth2",
+        "IExecuteFunctions.helpers.requestWithAuthentication",
+        "IExecuteFunctions.helpers.requestWithAuthenticationPaginated",
+        "IExecuteFunctions.helpers.returnJsonArray",
         "IExecuteFunctions.isConsoleOutputRedacted",
         "IExecuteFunctions.logger",
         "IExecuteFunctions.sendMessageToUI",
@@ -1147,7 +1166,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.code",
@@ -1169,7 +1188,81 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "LangChain Code v1 reads current and linked node data through the official workflow data proxy",
+          "operation": "run the official LangChain Code node with $json, $node, $workflow, and $execution proxy values",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.addInputData",
+            "IExecuteFunctions.addOutputData",
+            "IExecuteFunctions.executeWorkflow",
+            "IExecuteFunctions.getExecutionCancelSignal",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getMode",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeOutputs",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflowDataProxy",
+            "IExecuteFunctions.getWorkflowStaticData",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.assertBinaryData",
+            "IExecuteFunctions.helpers.constructExecutionMetaData",
+            "IExecuteFunctions.helpers.copyInputItems",
+            "IExecuteFunctions.helpers.createDeferredPromise",
+            "IExecuteFunctions.helpers.detectBinaryEncoding",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "IExecuteFunctions.helpers.getBinaryDataStream",
+            "IExecuteFunctions.helpers.httpRequest",
+            "IExecuteFunctions.helpers.httpRequestWithAuthentication",
+            "IExecuteFunctions.helpers.normalizeItems",
+            "IExecuteFunctions.helpers.prepareBinaryData",
+            "IExecuteFunctions.helpers.refreshOAuth2Token",
+            "IExecuteFunctions.helpers.request",
+            "IExecuteFunctions.helpers.requestOAuth1",
+            "IExecuteFunctions.helpers.requestOAuth2",
+            "IExecuteFunctions.helpers.requestWithAuthentication",
+            "IExecuteFunctions.helpers.requestWithAuthenticationPaginated",
+            "IExecuteFunctions.helpers.returnJsonArray",
+            "IExecuteFunctions.logger",
+            "IExecuteFunctions.sendMessageToUI",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "currentPrompt": "workflow proxy fixture prompt",
+                "priorPrompt": "workflow proxy fixture prompt",
+                "workflowName": "Published LangChain Code v1 workflow data proxy",
+                "executionMode": "test",
+                "childValue": "inline child output",
+                "childOutputCount": 1
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "currentPrompt": "workflow proxy fixture prompt",
+                "priorPrompt": "workflow proxy fixture prompt",
+                "workflowName": "Published LangChain Code v1 workflow data proxy",
+                "executionMode": "test",
+                "childValue": "inline child output",
+                "childOutputCount": 1
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",

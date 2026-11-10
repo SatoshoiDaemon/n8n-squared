@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { basename, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { evaluateN8nExpression } from '../../expressions/n8n-expression.ts';
-import type { GraphNodeContext, NodeAdapter, NodeExecutionData } from '../../execution/graph-engine.ts';
+import type { GraphNodeContext, NodeAdapter, NodeExecutionData, WorkflowDataProxyState } from '../../execution/graph-engine.ts';
 import { NodeAdapterRegistry } from '../../execution/graph-engine.ts';
 import { N8nPackageCatalog, type CatalogCredential, type CatalogNode } from './package-catalog.ts';
 
@@ -51,6 +51,13 @@ export class N8nNodePackageRuntime {
 		require: ReturnType<typeof createRequire>;
 		runtime: N8nNodePackageRuntime;
 	}>>();
+	private readonly loadedNodeTypes = new Map<string, {
+		wrapper: VersionedTypeLike;
+		description: Record<string, unknown>;
+		versions: number[];
+		require: ReturnType<typeof createRequire>;
+		runtime: N8nNodePackageRuntime;
+	}>();
 	private initialized = false;
 
 	constructor(packagesDirectory: string) {
@@ -147,6 +154,8 @@ export class N8nNodePackageRuntime {
 		const adapter: NodeAdapter = {
 			type: record.nodeType,
 			versions,
+			createWorkflowDataProxy: (context, itemIndex, state) =>
+				loaded.runtime.createWorkflowDataProxy(context, itemIndex, state, loaded),
 			getInputDefinitions: async (context) => {
 				const selected = selectNodeType(loaded.wrapper, context.node.typeVersion ?? 1);
 				const description = selected.description ?? loaded.description;
@@ -418,7 +427,83 @@ export class N8nNodePackageRuntime {
 		});
 		const interfacesUsed = scanRuntimeContracts(await readFile(entryPath, 'utf8').catch(() => ''), executable);
 		this.catalog.markRuntimeLoaded(record.nodeType, description, classifyRuntimeExecution(description, wrapper, versions), interfacesUsed, false, versions);
-		return { wrapper, description, versions, require: entryRequire, runtime: this };
+		const loaded = { wrapper, description, versions, require: entryRequire, runtime: this };
+		this.loadedNodeTypes.set(record.nodeType, loaded);
+		return loaded;
+	}
+
+	private createWorkflowDataProxy(
+		context: GraphNodeContext,
+		itemIndex: number,
+		state: WorkflowDataProxyState,
+		activeNodeType: { wrapper: VersionedTypeLike; description: Record<string, unknown>; versions: number[]; require: ReturnType<typeof createRequire>; runtime: N8nNodePackageRuntime },
+	): Record<string, unknown> {
+		const workflowModule = activeNodeType.require('n8n-workflow') as Record<string, any>;
+		const nodeTypesByName = new Map<string, Map<number, NodeTypeLike>>();
+		const loadedTypes = new Map(this.loadedNodeTypes);
+		loadedTypes.set(context.node.type, activeNodeType);
+		for (const [type, loaded] of loadedTypes) {
+			const versions = new Map<number, NodeTypeLike>();
+			for (const version of loaded.versions) {
+				try { versions.set(version, selectNodeType(loaded.wrapper, version)); } catch { /* unsupported version */ }
+			}
+			nodeTypesByName.set(type, versions);
+		}
+		const nodeTypes = {
+			getByName: (type: string) => [...(nodeTypesByName.get(type)?.values() ?? [])].at(-1),
+			getByNameAndVersion: (type: string, version?: number) => {
+				const versions = nodeTypesByName.get(type);
+				return (version === undefined ? [...(versions?.values() ?? [])].at(-1) : versions?.get(version)) as NodeTypeLike | undefined;
+			},
+			getKnownTypes: () => Object.fromEntries([...nodeTypesByName].map(([type, versions]) => [type, Object.fromEntries(versions)])),
+		};
+		const workflowNodes = context.workflow.nodes.map((node) => ({
+			...node,
+			typeVersion: node.typeVersion ?? 1,
+			position: node.position ?? [0, 0],
+			parameters: node.parameters ?? {},
+		}));
+		const workflow = new workflowModule.Workflow({
+			id: context.workflow.id ?? context.executionId,
+			name: context.workflow.name,
+			nodes: workflowNodes,
+			connections: context.workflow.connections ?? {},
+			active: context.workflow.active ?? false,
+			nodeTypes,
+			staticData: context.getWorkflowStaticData('global'),
+			settings: { ...(context.workflow.settings ?? {}), timezone: context.getTimezone(), binaryMode: 'default' },
+		});
+		const n8nNode = workflow.getNode(context.node.name);
+		if (!n8nNode) throw new Error(`Node ${context.node.name} is missing from the n8n workflow data proxy context`);
+		const executeData = { ...state.executeData, node: n8nNode };
+		const runDataOptions = state.runExecutionData as Record<string, any>;
+		const createRunExecutionData = workflowModule.createRunExecutionData as ((options: Record<string, unknown>) => unknown) | undefined;
+		const runExecutionData = createRunExecutionData
+			? createRunExecutionData({
+				...runDataOptions,
+				executionData: {
+					...(runDataOptions.executionData ?? {}),
+					nodeExecutionStack: [executeData],
+				},
+			})
+			: runDataOptions;
+		const envProviderState = { isProcessAvailable: true, isEnvAccessBlocked: true, env: {} };
+		return new workflowModule.WorkflowDataProxy(
+			workflow,
+			runExecutionData,
+			0,
+			itemIndex,
+			context.node.name,
+			state.connectionInputData,
+			{},
+			context.mode,
+			state.additionalKeys,
+			executeData,
+			-1,
+			{},
+			context.node.name,
+			envProviderState,
+		).getDataProxy() as Record<string, unknown>;
 	}
 
 	private async importCredentialType(record: CatalogCredential): Promise<Record<string, unknown>> {

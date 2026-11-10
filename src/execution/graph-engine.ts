@@ -34,6 +34,13 @@ export interface GraphNodeContext {
 	getTimezone(): string;
 	getWorkflowSettings(): Record<string, unknown>;
 	getWorkflowStaticData(type: string): Record<string, unknown>;
+	getWorkflowDataProxy(itemIndex?: number): Record<string, unknown>;
+	executeWorkflow(
+		workflowInfo: { id?: string; code?: unknown },
+		inputData?: NodeExecutionData[],
+		parentCallbackManager?: unknown,
+		options?: { doNotWaitToFinish?: boolean; parentExecution?: unknown; executionMode?: GraphNodeContext['mode']; returnLastRunOnly?: boolean },
+	): Promise<{ executionId: string; data: Array<NodeExecutionData[] | null>; waitTill?: Date | null }>;
 	continueOnFail(): boolean;
 	getExecutionCancelSignal(): AbortSignal;
 	getNodeWebhookUrl(name: string): string | undefined;
@@ -99,11 +106,19 @@ export interface NodeAdapter {
 	/** Exact typeVersion values supported by this implementation. */
 	versions: number[];
 	getInputDefinitions?(context: GraphNodeContext): Array<string | Record<string, unknown>> | Promise<Array<string | Record<string, unknown>>>;
+	createWorkflowDataProxy?(context: GraphNodeContext, itemIndex: number, state: WorkflowDataProxyState): Record<string, unknown>;
 	execute?(context: GraphNodeContext): Promise<NodeOutput>;
 	trigger?(context: GraphNodeContext): Promise<unknown>;
 	poll?(context: GraphNodeContext): Promise<NodeOutput>;
 	webhook?(context: GraphNodeContext): Promise<unknown>;
 	supplyData?(context: GraphNodeContext): Promise<Record<string, SuppliedNodeData>>;
+}
+
+export interface WorkflowDataProxyState {
+	connectionInputData: NodeExecutionData[];
+	runExecutionData: Record<string, unknown>;
+	executeData: Record<string, unknown>;
+	additionalKeys: Record<string, unknown>;
 }
 
 export type CredentialProvider = ((
@@ -136,6 +151,9 @@ export interface GraphExecutionRequest {
 	executionMetadata?: Record<string, unknown>;
 	initialOutput?: NodeExecutionData[][];
 	webhookRequest?: GraphWebhookRequest;
+	resolveWorkflow?: (workflowInfo: { id?: string; code?: unknown }) => Promise<unknown | undefined>;
+	getWorkflowStaticData?: (workflowId: string) => Promise<Record<string, Record<string, unknown>>>;
+	saveWorkflowStaticData?: (workflowId: string, state: Record<string, Record<string, unknown>>) => Promise<void>;
 }
 
 export interface NodeRunRecord {
@@ -267,6 +285,37 @@ export class GraphExecutionEngine {
 			if (firstError !== undefined) throw firstError;
 		};
 		let workflowId = typeof graph.document.id === 'string' ? graph.document.id : undefined;
+		const executeSubWorkflow: GraphNodeContext['executeWorkflow'] = async (workflowInfo, inputData = [], _parentCallbackManager, options = {}) => {
+			if (options.doNotWaitToFinish) throw new Error('Squared subworkflow execution currently requires an awaited result');
+			const inlineWorkflow = isObject(workflowInfo.code) ? cloneExecutionValue(workflowInfo.code) as WorkflowDocument : undefined;
+			const subWorkflow = inlineWorkflow ?? await request.resolveWorkflow?.(workflowInfo);
+			if (!subWorkflow) throw new Error(workflowInfo.id ? `Subworkflow ${workflowInfo.id} was not found` : 'Subworkflow execution requires an id or inline workflow definition');
+			const subWorkflowId = isObject(subWorkflow) && typeof subWorkflow.id === 'string' ? subWorkflow.id : undefined;
+			const childExecutionId = globalThis.crypto.randomUUID();
+			const childStaticData = subWorkflowId ? await request.getWorkflowStaticData?.(subWorkflowId) : undefined;
+			const result = await this.execute(subWorkflow, {
+				input: inputData,
+				executionId: childExecutionId,
+				mode: options.executionMode ?? mode,
+				...(childStaticData ? { staticData: childStaticData } : {}),
+			});
+			if (result.status === 'failed') throw new Error(result.error || 'Subworkflow execution failed');
+			if (subWorkflowId) await request.saveWorkflowStaticData?.(subWorkflowId, result.staticData);
+			const childGraph = buildWorkflowGraph(subWorkflow);
+			const terminalNodes = [...childGraph.nodesByName.values()].filter((childNode) =>
+				Object.hasOwn(result.outputsByNode, childNode.name) &&
+				!(childGraph.outgoing.get(childNode.name) ?? []).some((connection) => connection.sourceType === 'main' && connection.targetType === 'main'),
+			);
+			const terminalOutputs = terminalNodes.map((childNode) => result.outputsByNode[childNode.name] ?? []);
+			const outputCount = Math.max(1, ...terminalOutputs.map((ports) => ports.length));
+			const data: Array<NodeExecutionData[] | null> = Array.from({ length: outputCount }, (_value, outputIndex) =>
+				terminalOutputs.flatMap((ports) => ports[outputIndex] ?? []),
+			);
+			if (result.status === 'waiting') {
+				return { executionId: result.id, data, waitTill: result.waitState?.resumeAt ? new Date(result.waitState.resumeAt) : null };
+			}
+			return { executionId: result.id, data };
+		};
 
 		try {
 			if (graph.document.nodes.length > this.limits.maxNodes) {
@@ -283,7 +332,7 @@ export class GraphExecutionEngine {
 				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
 				const adapter = await this.registry.resolve(start.type, version);
 				if (!adapter?.poll) throw new Error(`Node ${start.type}@${version} does not implement poll()`);
-				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, getInputDefinitions: adapter.getInputDefinitions });
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, getInputDefinitions: adapter.getInputDefinitions, createWorkflowDataProxy: adapter.createWorkflowDataProxy, executeWorkflow: executeSubWorkflow });
 				initialOutputRecord = normalizeOutput(await adapter.poll(context), getOutputPortCount(graph, start.name), []);
 				initialOutput = nodeExecutionPorts(initialOutputRecord.main ?? []);
 			}
@@ -291,7 +340,7 @@ export class GraphExecutionEngine {
 				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
 				const adapter = await this.registry.resolve(start.type, version);
 				if (!adapter?.webhook) throw new Error(`Node ${start.type}@${version} does not implement webhook()`);
-				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, webhookRequest: request.webhookRequest, getInputDefinitions: adapter.getInputDefinitions });
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, webhookRequest: request.webhookRequest, getInputDefinitions: adapter.getInputDefinitions, createWorkflowDataProxy: adapter.createWorkflowDataProxy, executeWorkflow: executeSubWorkflow });
 				const result = await adapter.webhook(context);
 				const workflowData = isObject(result) && 'workflowData' in result ? result.workflowData : result;
 				initialOutputRecord = normalizeOutput(workflowData as NodeOutput, getOutputPortCount(graph, start.name), []);
@@ -352,6 +401,8 @@ export class GraphExecutionEngine {
 					credentialProvider: this.credentialProvider,
 					binaryStore: this.binaryStore,
 					getInputDefinitions: adapter.getInputDefinitions,
+					createWorkflowDataProxy: adapter.createWorkflowDataProxy,
+					executeWorkflow: executeSubWorkflow,
 				});
 				const hasMainInputConnection = (graph.incoming.get(node.name) ?? []).some((connection) => connection.targetType === 'main');
 
@@ -489,6 +540,7 @@ export class GraphExecutionEngine {
 			credentialProvider: this.credentialProvider,
 			binaryStore: this.binaryStore,
 			getInputDefinitions: adapter.getInputDefinitions,
+			createWorkflowDataProxy: adapter.createWorkflowDataProxy,
 			emit: async (data) => emit(data.map((port) => port.map(normalizeItem)), snapshotContextData(contextData)),
 		});
 		const result = await adapter.trigger(context);
@@ -523,6 +575,7 @@ export class GraphExecutionEngine {
 			credentialProvider: this.credentialProvider,
 			binaryStore: this.binaryStore,
 			getInputDefinitions: adapter.getInputDefinitions,
+			createWorkflowDataProxy: adapter.createWorkflowDataProxy,
 			webhookRequest,
 			webhookResponse: response,
 		});
@@ -543,6 +596,8 @@ function createNodeContext(args: {
 	credentialProvider?: CredentialProvider;
 	binaryStore?: GraphEngineLimits['binaryStore'];
 	getInputDefinitions?: NodeAdapter['getInputDefinitions'];
+	createWorkflowDataProxy?: NodeAdapter['createWorkflowDataProxy'];
+	executeWorkflow?: GraphNodeContext['executeWorkflow'];
 	emit?: (data: NodeExecutionData[][]) => Promise<void>;
 	webhookRequest?: GraphWebhookRequest;
 	webhookResponse?: Record<string, unknown>;
@@ -652,6 +707,66 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 		getTimezone() { return typeof graph.document.settings?.timezone === 'string' ? graph.document.settings.timezone : 'UTC'; },
 		getWorkflowSettings() { return graph.document.settings ?? {}; },
 		getWorkflowStaticData(type: string) { return contextDataFor(type); },
+		getWorkflowDataProxy(itemIndex = 0) {
+			if (!args.createWorkflowDataProxy) throw new Error('IExecuteFunctions.getWorkflowDataProxy is not configured for this node');
+			const runData = Object.fromEntries([...outputsByNode].map(([name, outputs], executionIndex) => {
+				const sources = (graph.incoming.get(name) ?? []).map((connection) => ({
+					previousNode: connection.source.name,
+					previousNodeOutput: connection.sourceOutput,
+					previousNodeRun: 0,
+				}));
+				return [name, [{
+					startTime: 0,
+					executionIndex,
+					executionTime: 0,
+					source: sources,
+					data: outputs,
+				}]];
+			}));
+			const sourcesByInput = new Map<number, Array<Record<string, unknown>>>();
+			for (const connection of graph.incoming.get(node.name) ?? []) {
+				if (connection.targetType !== 'main') continue;
+				const sources = sourcesByInput.get(connection.targetInput) ?? [];
+				sources.push({ previousNode: connection.source.name, previousNodeOutput: connection.sourceOutput, previousNodeRun: 0 });
+				sourcesByInput.set(connection.targetInput, sources);
+			}
+			const executeData = {
+				node,
+				data: { main: inputPorts },
+				source: sourcesByInput.size ? { main: Array.from({ length: Math.max(...sourcesByInput.keys()) + 1 }, (_value, index) => sourcesByInput.get(index) ?? []) } : null,
+				runIndex: 0,
+			};
+			const baseUrl = publicWorkflowBaseUrl(args.webhookRequest);
+			const resumeUrl = `${baseUrl}/api/executions/${encodeURIComponent(executionId)}/resume`;
+			const state: WorkflowDataProxyState = {
+				connectionInputData: flattenInputs,
+				runExecutionData: {
+					version: 1,
+					startData: {},
+					resultData: { runData, lastNodeExecuted: [...outputsByNode.keys()].at(-1) },
+					executionData: {
+						contextData: Object.fromEntries(contextData),
+						nodeExecutionStack: [executeData],
+						metadata: {},
+						waitingExecution: {},
+						waitingExecutionSource: {},
+						runtimeData: {},
+					},
+				},
+				executeData,
+				additionalKeys: {
+					$execution: { id: executionId, mode: mode === 'manual' ? 'test' : 'production', resumeUrl, resumeFormUrl: resumeUrl },
+					$executionId: executionId,
+					$vars: {},
+					$secrets: {},
+				},
+			};
+			return args.createWorkflowDataProxy(context, itemIndex, state);
+		},
+		async executeWorkflow(workflowInfo, inputData = [], parentCallbackManager, options) {
+			if (!args.executeWorkflow) throw new Error('Subworkflow execution is unavailable in this execution context');
+			return await args.executeWorkflow(workflowInfo, inputData, parentCallbackManager, options);
+		},
 		continueOnFail() { return node.continueOnFail === true || node.onError === 'continueErrorOutput' || node.onError === 'continueRegularOutput'; },
 		getExecutionCancelSignal() { return abortController.signal; },
 		getNodeWebhookUrl(_name: string) { return args.webhookRequest?.url; },
@@ -791,7 +906,7 @@ function createBasicHelpers(
 			return items.map((item) => ({ json: Object.fromEntries(properties.filter((key) => Object.hasOwn(item.json, key)).map((key) => [key, item.json[key]])) }));
 		},
 		normalizeItems(items: unknown[]) {
-			return items.map((item) => normalizeItem(item));
+			return normalizeN8nItems(items);
 		},
 		constructExecutionMetaData(items: NodeExecutionData[], { itemData }: { itemData?: Array<{ item: number; input?: number }> } = {}) {
 			return items.map((item, index) => ({ ...item, pairedItem: itemData?.[index] ?? { item: index } }));
@@ -1309,10 +1424,80 @@ function normalizeInput(input: unknown): NodeExecutionData[] {
 
 function normalizeItem(item: unknown): NodeExecutionData {
 	if (isObject(item) && isObject(item.json)) {
-		return structuredClone(item) as NodeExecutionData;
+		return cloneExecutionValue(item) as NodeExecutionData;
 	}
-	if (isObject(item)) return { json: structuredClone(item) };
+	if (isObject(item)) return { json: cloneExecutionValue(item) };
 	return { json: { value: item } };
+}
+
+/** Mirrors n8n-core's normalizeItems() contract for values returned across vm2's bridge. */
+function normalizeN8nItems(executionData: unknown): NodeExecutionData[] {
+	if (isObject(executionData)) {
+		executionData = 'json' in executionData ? [executionData] : [{ json: executionData }];
+	}
+	if (!Array.isArray(executionData)) throw new Error('n8n normalizeItems expects an item or an array of items');
+	const items = executionData as unknown[];
+	if (items.every((item) => isObject(item) && 'json' in item)) return items as NodeExecutionData[];
+	if (items.some((item) => isObject(item) && 'json' in item)) throw new Error('Inconsistent item format');
+	if (items.every((item) => isObject(item) && 'binary' in item)) {
+		return items.map((item) => {
+			const json = Object.fromEntries(Object.keys(item as object).filter((key) => key !== 'binary').map((key) => [key, (item as Record<string, unknown>)[key]]));
+			return { json, binary: (item as Record<string, unknown>).binary as Record<string, unknown> };
+		});
+	}
+	if (items.some((item) => isObject(item) && 'binary' in item)) throw new Error('Inconsistent item format');
+	return items.map((item) => ({ json: item as Record<string, unknown> }));
+}
+
+/** Clone values returned by published nodes, including cross-context vm2 objects. */
+function cloneExecutionValue<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+	if (value !== null && typeof value === 'object' && !Buffer.isBuffer(value)) {
+		const toJSON = (value as { toJSON?: unknown }).toJSON;
+		if (typeof toJSON === 'function') return cloneExecutionValue((toJSON as () => unknown).call(value), seen) as T;
+	}
+	try {
+		return structuredClone(value);
+	} catch {
+		return cloneExecutionValueFallback(value, seen) as T;
+	}
+}
+
+function cloneExecutionValueFallback(value: unknown, seen: WeakMap<object, unknown>): unknown {
+	if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
+	if (typeof value === 'function') return value;
+	if (seen.has(value)) return seen.get(value);
+	if (Buffer.isBuffer(value)) return Buffer.from(value);
+	if (value instanceof Date) return new Date(value.getTime());
+	if (value instanceof ArrayBuffer) return value.slice(0);
+	if (ArrayBuffer.isView(value)) {
+		if (value instanceof DataView) return new DataView(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+		return new (value.constructor as { new (source: ArrayLike<number>): ArrayBufferView })(value as unknown as ArrayLike<number>);
+	}
+	if (Array.isArray(value)) {
+		const result: unknown[] = [];
+		seen.set(value, result);
+		for (const item of value) result.push(cloneExecutionValueFallback(item, seen));
+		return result;
+	}
+	if (value instanceof Map) {
+		const result = new Map();
+		seen.set(value, result);
+		for (const [key, entry] of value) result.set(cloneExecutionValueFallback(key, seen), cloneExecutionValueFallback(entry, seen));
+		return result;
+	}
+	if (value instanceof Set) {
+		const result = new Set();
+		seen.set(value, result);
+		for (const entry of value) result.add(cloneExecutionValueFallback(entry, seen));
+		return result;
+	}
+	const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(value) === null ? null : Object.prototype);
+	seen.set(value, result);
+	for (const key of Object.keys(value)) {
+		if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+		result[key] = cloneExecutionValueFallback((value as Record<string, unknown>)[key], seen);
+	}
+	return result;
 }
 
 function assertItemLimit(items: readonly unknown[], limit: number): void {
@@ -1358,6 +1543,19 @@ function nonNegativeInteger(value: unknown, fallback: number): number {
 
 function safeErrorMessage(error: unknown): string {
 	return (error instanceof Error ? error.message : String(error)).slice(0, 4_000);
+}
+
+function publicWorkflowBaseUrl(request: GraphWebhookRequest | undefined): string {
+	if (!request) return 'http://localhost';
+	const forwardedHost = request.headers['x-forwarded-host'];
+	const host = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost;
+	const forwardedProtocol = request.headers['x-forwarded-proto'];
+	const protocol = (Array.isArray(forwardedProtocol) ? forwardedProtocol[0] : forwardedProtocol)?.split(',')[0]?.trim();
+	try {
+		return new URL(`${protocol === 'https' ? 'https' : 'http'}://${host || new URL(request.url).host}`).origin;
+	} catch {
+		return 'http://localhost';
+	}
 }
 
 function delay(milliseconds: number, signal: AbortSignal): Promise<void> {

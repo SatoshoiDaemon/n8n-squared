@@ -12,6 +12,11 @@ export interface NodeExecutionData extends ExpressionItem {
 
 export type NodeOutput = NodeExecutionData[][] | Record<string, unknown[][]> | null | undefined;
 
+export interface SuppliedNodeData {
+	response: unknown;
+	closeFunction?: () => void | Promise<void>;
+}
+
 export interface GraphNodeContext {
 	readonly executionId: string;
 	readonly mode: 'manual' | 'webhook' | 'schedule' | 'trigger' | 'poll';
@@ -97,7 +102,7 @@ export interface NodeAdapter {
 	trigger?(context: GraphNodeContext): Promise<unknown>;
 	poll?(context: GraphNodeContext): Promise<NodeOutput>;
 	webhook?(context: GraphNodeContext): Promise<unknown>;
-	supplyData?(context: GraphNodeContext): Promise<Record<string, { response: unknown }>>;
+	supplyData?(context: GraphNodeContext): Promise<Record<string, SuppliedNodeData>>;
 }
 
 export type CredentialProvider = ((
@@ -251,6 +256,15 @@ export class GraphExecutionEngine {
 			Object.entries(request.staticData ?? {}).map(([key, value]) => [key, { ...value }]),
 		);
 		const executionMetadata = new Map<string, unknown>(Object.entries(request.executionMetadata ?? {}));
+		const closeFunctions: Array<() => void | Promise<void>> = [];
+		const closeSuppliedResources = async () => {
+			const callbacks = closeFunctions.splice(0).reverse();
+			let firstError: unknown;
+			for (const closeFunction of callbacks) {
+				try { await closeFunction(); } catch (error) { firstError ??= error; }
+			}
+			if (firstError !== undefined) throw firstError;
+		};
 		let workflowId = typeof graph.document.id === 'string' ? graph.document.id : undefined;
 
 		try {
@@ -301,7 +315,10 @@ export class GraphExecutionEngine {
 				const version = typeof node.typeVersion === 'number' ? node.typeVersion : 1;
 				const adapter = await this.registry.resolve(node.type, version);
 				if (incoming.length === 0 && !adapter?.supplyData) continue;
-				const inputPorts = collectInputPorts(incoming, outputsByNode);
+				let inputPorts = collectInputPorts(incoming, outputsByNode);
+				if (adapter?.supplyData && !inputPorts.some((port) => port.length > 0)) {
+					inputPorts = inheritAiSubNodeInputPorts(node, graph, outputsByNode) ?? inputPorts;
+				}
 				const inputItems = inputPorts.flatMap((port) => port);
 				if (inputItems.length === 0 && !incoming.some((connection) => connection.targetType !== 'main') && !adapter?.supplyData) {
 					nodeRuns.push(makeRunRecord(node, 'skipped', 0, 0, 0));
@@ -334,6 +351,7 @@ export class GraphExecutionEngine {
 					credentialProvider: this.credentialProvider,
 					binaryStore: this.binaryStore,
 				});
+				const hasMainInputConnection = (graph.incoming.get(node.name) ?? []).some((connection) => connection.targetType === 'main');
 
 				let attempts = 0;
 				let output: NodeOutput;
@@ -344,9 +362,12 @@ export class GraphExecutionEngine {
 				while (attempts < maxTries) {
 					attempts += 1;
 					try {
-						if (adapter.execute && (inputItems.length > 0 || !adapter.supplyData)) output = await adapter.execute(context);
+						if (adapter.execute && ((hasMainInputConnection && inputItems.length > 0) || !adapter.supplyData)) output = await adapter.execute(context);
 						else {
 							const supplied = await adapter.supplyData!(context);
+							for (const value of Object.values(supplied ?? {})) {
+								if (typeof value.closeFunction === 'function') closeFunctions.push(value.closeFunction);
+							}
 							output = Object.fromEntries(Object.entries(supplied ?? {}).map(([type, value]) => [type, [[value.response]]]));
 						}
 						nodeError = undefined;
@@ -383,6 +404,7 @@ export class GraphExecutionEngine {
 				outputsByNode.set(node.name, normalizedOutput);
 				const waitState = context.getPendingWait();
 				if (waitState) {
+					await closeSuppliedResources();
 					nodeRuns.push(makeRunRecord(node, 'waiting', attempts, inputItems.length, outputItems));
 					return {
 						id: executionId,
@@ -398,6 +420,7 @@ export class GraphExecutionEngine {
 				}
 				nodeRuns.push(makeRunRecord(node, 'succeeded', attempts, inputItems.length, outputItems));
 			}
+			await closeSuppliedResources();
 
 			const terminalNodes = order.filter((node) =>
 				node.name !== start.name && !(graph.outgoing.get(node.name) ?? []).some((connection) => reachable.has(connection.target.name)),
@@ -421,6 +444,7 @@ export class GraphExecutionEngine {
 				metadata: snapshotExecutionMetadata(executionMetadata),
 			};
 		} catch (error) {
+			try { await closeSuppliedResources(); } catch { /* keep the original execution failure */ }
 			return {
 				id: executionId,
 				...(workflowId ? { workflowId } : {}),
@@ -1166,6 +1190,25 @@ function collectInputPorts(
 		ports[connection.targetInput]?.push(...data.filter(isNodeExecutionData));
 	}
 	return ports;
+}
+
+function inheritAiSubNodeInputPorts(
+	node: WorkflowNodeDocument,
+	graph: WorkflowGraph,
+	outputsByNode: Map<string, Record<string, unknown[][]>>,
+	visited = new Set<string>(),
+): NodeExecutionData[][] | undefined {
+	if (visited.has(node.name)) return undefined;
+	visited.add(node.name);
+	for (const connection of graph.outgoing.get(node.name) ?? []) {
+		if (connection.sourceType === 'main' && connection.targetType === 'main') continue;
+		const parent = connection.target;
+		const parentInputs = collectInputPorts(graph.incoming.get(parent.name) ?? [], outputsByNode);
+		if (parentInputs.some((port) => port.length > 0)) return parentInputs;
+		const inherited = inheritAiSubNodeInputPorts(parent, graph, outputsByNode, visited);
+		if (inherited?.some((port) => port.length > 0)) return inherited;
+	}
+	return undefined;
 }
 
 function getOutputPortCount(graph: WorkflowGraph, nodeName: string): number {

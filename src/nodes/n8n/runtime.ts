@@ -201,12 +201,13 @@ export class N8nNodePackageRuntime {
 				const result = asRecord(await invoke('supplyData', context));
 				if (!result) throw new Error(`Node ${record.nodeType}@${context.node.typeVersion ?? 1} returned invalid supplyData()`);
 				const selected = loaded.wrapper.getNodeType ? loaded.wrapper.getNodeType(context.node.typeVersion) : loaded.wrapper;
-				const outputTypes = Array.isArray(selected.description?.outputs) ? selected.description.outputs : loaded.description.outputs;
-				const connectionType = Array.isArray(outputTypes)
-					? outputTypes.map((output) => typeof output === 'string' ? output : asRecord(output)?.type ?? asRecord(output)?.name).find((output) => typeof output === 'string' && output !== 'main')
-					: undefined;
+				const outputTypes = resolveConnectionConfiguration(selected.description?.outputs ?? loaded.description.outputs, context.node.parameters ?? {}, 'main', record.nodeType, context, loaded.require);
+				const connectionType = outputTypes.map((output) => typeof output === 'string' ? output : asRecord(output)?.type ?? asRecord(output)?.name).find((output) => typeof output === 'string' && output !== 'main');
 				if (Object.hasOwn(result, 'response') && typeof connectionType === 'string') {
-					return { [connectionType]: result as { response: unknown } };
+					return { [connectionType]: {
+						response: result.response,
+						...(typeof result.closeFunction === 'function' ? { closeFunction: result.closeFunction as () => void | Promise<void> } : {}),
+					} };
 				}
 				return result as Record<string, { response: unknown }>;
 			};
@@ -438,6 +439,12 @@ function createExecutionFacade(
 ): GraphNodeContext {
 	const workflowModule = requireFromPackage('n8n-workflow') as Record<string, unknown>;
 	const facade = new Proxy(context, {
+		has(target, property) {
+			if (context.mode !== 'webhook' && ['getRequestObject', 'getResponseObject', 'getWebhookName', 'getBodyData', 'getQueryData', 'getHeaderData', 'getParamsData'].includes(String(property))) {
+				return false;
+			}
+			return Reflect.has(target, property);
+		},
 		get(target, property, receiver) {
 			if (typeof property === 'string') accessed.add(property);
 			const value = Reflect.get(target, property, receiver) as unknown;
@@ -464,10 +471,10 @@ function createExecutionFacade(
 				};
 			}
 			if (property === 'getNodeInputs') {
-				return () => resolveConnectionConfiguration(description.inputs, context.node.parameters ?? {}, 'main', context.node.type);
+				return () => resolveConnectionConfiguration(description.inputs, context.node.parameters ?? {}, 'main', context.node.type, context, requireFromPackage);
 			}
 			if (property === 'getNodeOutputs') {
-				return () => resolveConnectionConfiguration(description.outputs, context.node.parameters ?? {}, 'main', context.node.type);
+				return () => resolveConnectionConfiguration(description.outputs, context.node.parameters ?? {}, 'main', context.node.type, context, requireFromPackage);
 			}
 			if (property === 'startJob') {
 				return async (taskType: string, payload: Record<string, unknown>, itemIndex = 0) =>
@@ -529,6 +536,15 @@ function createExecutionFacade(
 									return (helper as (...parameters: unknown[]) => Promise<unknown>).apply(helperReceiver, [requestOptions, itemIndex, paginationOptions, credentialType, ...args]);
 								}
 								return (helper as (...parameters: unknown[]) => Promise<unknown>).apply(helperReceiver, [authenticated, itemIndex, paginationOptions, undefined, ...args]);
+							};
+						}
+						if (helperProperty === 'getSecureEgressFilter') {
+							return (policy: 'safe' | 'enforced' | 'unsafe' = 'safe') => {
+								if (policy === 'enforced') throw new Error('An enforced n8n egress filter is unavailable because Squared has no configured SSRF policy');
+								if (policy !== 'safe' && policy !== 'unsafe') throw new Error(`Unsupported n8n egress policy: ${String(policy)}`);
+								const egress = requireFromPackage('@n8n/backend-network/egress') as { passthroughEgressFilter?: unknown };
+								if (!egress.passthroughEgressFilter) throw new Error('The published n8n passthrough egress filter is unavailable');
+								return egress.passthroughEgressFilter;
 							};
 						}
 						if (helper !== undefined) return helper;
@@ -635,8 +651,20 @@ function resolveConnectionConfiguration(
 	parameters: Record<string, unknown>,
 	defaultType: string,
 	nodeType: string,
+	context: GraphNodeContext,
+	requireFromPackage: ReturnType<typeof createRequire>,
 ): Array<string | Record<string, unknown>> {
 	if (Array.isArray(configured)) return configured as Array<string | Record<string, unknown>>;
+	if (typeof configured === 'string' && configured.startsWith('=')) {
+		const workflowModule = requireFromPackage('n8n-workflow') as {
+			Expression?: new (timezone: string) => { resolveSimpleParameterValue(value: string, data: Record<string, unknown>, returnObjectAsString?: boolean): unknown };
+		};
+		if (typeof workflowModule.Expression !== 'function') throw new Error('Published n8n expression runtime is unavailable for dynamic node connections');
+		const expression = new workflowModule.Expression(context.getTimezone());
+		const resolved = expression.resolveSimpleParameterValue(configured, { $parameter: parameters }, false);
+		if (Array.isArray(resolved)) return resolved as Array<string | Record<string, unknown>>;
+		return [];
+	}
 	if (nodeType === 'n8n-nodes-base.merge') {
 		const count = Number(parameters.numberInputs);
 		return Array.from({ length: Number.isInteger(count) && count > 0 ? Math.min(count, 100) : 2 }, () => ({ type: defaultType }));

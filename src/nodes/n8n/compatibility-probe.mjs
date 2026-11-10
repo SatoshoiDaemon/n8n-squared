@@ -21,6 +21,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		if (credentialType === 'httpHeaderAuth' && reference.id === 'squared-fixture-credential') return { name: 'x-squared-token', value: 'fixture-token' };
 		if (credentialType === 'npmApi' && reference.id === 'squared-npm-credential') return { accessToken: 'fixture-npm-token', registryUrl: controlledApiServerUrl };
 		if (credentialType === 'githubApi' && reference.id === 'squared-github-credential') return { server: controlledApiServerUrl, accessToken: 'fixture-github-token' };
+		if (credentialType === 'openAiApi' && reference.id === 'squared-openai-credential') return { apiKey: 'fixture-openai-key', url: `${controlledApiServerUrl}/v1` };
 		if (credentialType === 'oAuth2Api' && reference.id === 'squared-oauth2-credential') return {
 			clientId: 'fixture-client', clientSecret: 'fixture-secret', accessTokenUrl: `${controlledApiServerUrl}/oauth/token`,
 			oauthTokenData: { access_token: 'expired-fixture-token', refresh_token: 'fixture-refresh-token', token_type: 'Bearer', n8n_expires_at: 1 },
@@ -92,7 +93,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 				{ id: 'capture', name: 'Capture AI value', type: 'squared.compatibility.aiTextSplitterCapture', typeVersion: 1, parameters: {} },
 			],
 			connections: {
-				Manual: { main: [[{ node: 'Character Splitter', type: 'main', index: 0 }]] },
+				Manual: { main: [[{ node: 'Capture AI value', type: 'main', index: 0 }]] },
 				'Character Splitter': { ai_textSplitter: [[{ node: 'Capture AI value', type: 'ai_textSplitter', index: 0 }]] },
 			},
 		};
@@ -120,7 +121,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 				{ id: 'capture', name: 'Capture AI value', type: 'squared.compatibility.aiTextSplitterCapture', typeVersion: 1, parameters: {} },
 			],
 			connections: {
-				Manual: { main: [[{ node: 'Recursive Splitter', type: 'main', index: 0 }]] },
+				Manual: { main: [[{ node: 'Capture AI value', type: 'main', index: 0 }]] },
 				'Recursive Splitter': { ai_textSplitter: [[{ node: 'Capture AI value', type: 'ai_textSplitter', index: 0 }]] },
 			},
 		};
@@ -138,6 +139,234 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			status: 'passed',
 		});
 		executions.push({ nodeType: recursiveNodeType, typeVersion: 1, test: 'Recursive Character Text Splitter v1 groups a deterministic input through a real AI connection', status: 'passed', output: recursiveResult.output, metadata: recursiveResult.metadata });
+
+		const tokenSplitterType = '@n8n/n8n-nodes-langchain.textSplitterTokenSplitter';
+		const tokenSplitterWorkflow = {
+			id: 'squared-compatibility-ai-token-text-splitter', name: 'Published Token Text Splitter v1',
+			nodes: [manual,
+				{ id: 'splitter', name: 'Token Splitter', type: tokenSplitterType, typeVersion: 1, parameters: { chunkSize: 2, chunkOverlap: 0 } },
+				{ id: 'capture', name: 'Capture AI value', type: 'squared.compatibility.aiTextSplitterCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture AI value', type: 'main', index: 0 }]] },
+				'Token Splitter': { ai_textSplitter: [[{ node: 'Capture AI value', type: 'ai_textSplitter', index: 0 }]] },
+			},
+		};
+		const tokenSplitterResult = await engine.execute(tokenSplitterWorkflow, { input: { fixture: true } });
+		assert.equal(tokenSplitterResult.status, 'succeeded', tokenSplitterResult.error);
+		assert.deepEqual(tokenSplitterResult.output.map((item) => item.json), [{ chunks: ['one two', ' three'] }]);
+		assert.ok(tokenSplitterResult.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split'));
+		runtime.catalog.markValidatedWithEvidence(tokenSplitterType, {
+			typeVersion: 1,
+			test: 'Token Text Splitter v1 counts deterministic cl100k_base token chunks through a real AI connection',
+			operation: 'splitText("one two three") with chunkSize 2 and cl100k_base',
+			contracts: ['ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData', 'ISupplyDataFunctions.logAiEvent'],
+			expected: { chunks: ['one two', ' three'], aiExecutionLogged: true },
+			observed: { chunks: tokenSplitterResult.output[0]?.json.chunks, aiExecutionLogged: tokenSplitterResult.metadata.n8nAiEvents.some((event) => event.event === 'ai-text-split') },
+			status: 'passed',
+		});
+		executions.push({ nodeType: tokenSplitterType, typeVersion: 1, test: 'Token Text Splitter v1 counts deterministic cl100k_base token chunks through a real AI connection', status: 'passed', output: tokenSplitterResult.output, metadata: tokenSplitterResult.metadata });
+
+		registry.register({
+			type: 'squared.compatibility.aiDocumentCapture',
+			versions: [1],
+			async execute(context) {
+				const loader = await context.getInputConnectionData('ai_document', 0, 0);
+				const inputItems = context.getInputData();
+				const documents = (await Promise.all(inputItems.map((item, itemIndex) => loader.processItem(item, itemIndex)))).flat();
+				return [[{ json: { documents: documents.map(({ pageContent, metadata }) => ({ pageContent, metadata })) } }]];
+			},
+		});
+		registry.register({
+			type: 'squared.compatibility.aiMemoryCapture',
+			versions: [1],
+			async execute(context) {
+				const memory = await context.getInputConnectionData('ai_memory', 0, 0);
+				const input = context.getInputData()[0]?.json ?? {};
+				if (input.toRemember) await memory.saveContext({ input: input.toRemember }, { output: input.reply });
+				const values = await memory.loadMemoryVariables({});
+				return [[{ json: { history: (values.chat_history ?? []).map((message) => message.content) } }]];
+			},
+		});
+		registry.register({
+			type: 'squared.compatibility.aiOutputParserCapture',
+			versions: [1],
+			async execute(context) {
+				const parser = await context.getInputConnectionData('ai_outputParser', 0, 0);
+				const input = context.getInputData()[0]?.json ?? {};
+				return [[{ json: { parsed: await parser.parse(input.text) } }]];
+			},
+		});
+		registry.register({
+			type: 'squared.compatibility.aiLanguageModelCapture',
+			versions: [1],
+			async execute(context) {
+				const model = await context.getInputConnectionData('ai_languageModel', 0, 0);
+				const message = await model.invoke(context.getInputData()[0]?.json?.prompt ?? 'squared fixture prompt');
+				return [[{ json: { content: message.content } }]];
+			},
+		});
+		registry.register({
+			type: 'squared.compatibility.aiEmbeddingCapture',
+			versions: [1],
+			async execute(context) {
+				const embeddings = await context.getInputConnectionData('ai_embedding', 0, 0);
+				return [[{ json: { vectors: await embeddings.embedDocuments(['squared alpha', 'squared beta']) } }]];
+			},
+		});
+		registry.register({
+			type: 'squared.compatibility.aiVectorStoreCapture',
+			versions: [1],
+			async execute(context) {
+				const vectorStore = await context.getInputConnectionData('ai_vectorStore', 0, 0);
+				const documents = await vectorStore.similaritySearch('alpha query', 2);
+				return [[{ json: { documents: documents.map(({ pageContent, metadata }) => ({ pageContent, metadata })) } }]];
+			},
+		});
+		const itemListParserType = '@n8n/n8n-nodes-langchain.outputParserItemList';
+		await execute('Item List Output Parser v1 parses and limits a deterministic response through a real AI connection', itemListParserType, 1, {
+			id: 'squared-compatibility-item-list-output-parser', name: 'Published Item List Output Parser v1',
+			nodes: [manual,
+				{ id: 'parser', name: 'Item List Output Parser', type: itemListParserType, typeVersion: 1, parameters: { options: { numberOfItems: 2, separator: '\n' } } },
+				{ id: 'capture', name: 'Capture Parser', type: 'squared.compatibility.aiOutputParserCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Parser', type: 'main', index: 0 }]] },
+				'Item List Output Parser': { ai_outputParser: [[{ node: 'Capture Parser', type: 'ai_outputParser', index: 0 }]] },
+			},
+		}, { text: 'alpha\nbeta\ngamma' }, { output: [{ parsed: ['alpha', 'beta'] }] });
+
+		const structuredParserType = '@n8n/n8n-nodes-langchain.outputParserStructured';
+		await execute('Structured Output Parser v1.3 validates a JSON Schema and unwraps the documented output field', structuredParserType, 1.3, {
+			id: 'squared-compatibility-structured-output-parser', name: 'Published Structured Output Parser v1.3',
+			nodes: [manual,
+				{ id: 'parser', name: 'Structured Output Parser', type: structuredParserType, typeVersion: 1.3, parameters: { schemaType: 'manual', inputSchema: JSON.stringify({ type: 'object', properties: { label: { type: 'string' }, count: { type: 'integer' } }, required: ['label', 'count'], additionalProperties: false }), autoFix: false } },
+				{ id: 'capture', name: 'Capture Parser', type: 'squared.compatibility.aiOutputParserCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Parser', type: 'main', index: 0 }]] },
+				'Structured Output Parser': { ai_outputParser: [[{ node: 'Capture Parser', type: 'ai_outputParser', index: 0 }]] },
+			},
+		}, { text: '{"output":{"label":"fixture","count":3}}' }, { output: [{ parsed: { output: { label: 'fixture', count: 3 } } }] });
+
+		const documentLoaderType = '@n8n/n8n-nodes-langchain.documentDefaultDataLoader';
+		const documentLoaderWorkflow = {
+			id: 'squared-compatibility-default-data-loader', name: 'Published Default Data Loader v1.1',
+			nodes: [manual,
+				{ id: 'loader', name: 'Default Data Loader', type: documentLoaderType, typeVersion: 1.1, parameters: { dataType: 'json', jsonMode: 'allInputData', textSplittingMode: 'simple', options: {} } },
+				{ id: 'capture', name: 'Capture Document', type: 'squared.compatibility.aiDocumentCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Document', type: 'main', index: 0 }]] },
+				'Default Data Loader': { ai_document: [[{ node: 'Capture Document', type: 'ai_document', index: 0 }]] },
+			},
+		};
+		const documentLoaderResult = await engine.execute(documentLoaderWorkflow, { input: { content: 'Squared document fixture' } });
+		assert.equal(documentLoaderResult.status, 'succeeded', documentLoaderResult.error);
+		const documents = documentLoaderResult.output[0]?.json.documents;
+		assert.equal(documents?.length, 1);
+		assert.match(documents[0].pageContent, /Squared document fixture/);
+		runtime.catalog.markValidatedWithEvidence(documentLoaderType, {
+			typeVersion: 1.1,
+			test: 'Default Data Loader v1.1 converts deterministic incoming JSON into a real LangChain document',
+			operation: 'dataType=json;jsonMode=allInputData;textSplittingMode=simple',
+			contracts: [...new Set([...(runtime.getSnapshot().nodes.find((node) => node.nodeType === documentLoaderType)?.interfacesUsed ?? []), 'ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData'])],
+			expected: { documentCount: 1, pageContentIncludes: 'Squared document fixture' },
+			observed: { documentCount: documents.length, pageContent: documents[0].pageContent },
+			status: 'passed',
+		});
+		executions.push({ nodeType: documentLoaderType, typeVersion: 1.1, test: 'Default Data Loader v1.1 converts deterministic incoming JSON into a real LangChain document', status: 'passed', output: documentLoaderResult.output, metadata: documentLoaderResult.metadata });
+
+		const jsonLoaderType = '@n8n/n8n-nodes-langchain.documentJsonInputLoader';
+		const jsonLoaderWorkflow = {
+			id: 'squared-compatibility-json-input-loader', name: 'Published JSON Input Loader v1',
+			nodes: [manual,
+				{ id: 'splitter', name: 'Token Splitter', type: tokenSplitterType, typeVersion: 1, parameters: { chunkSize: 2, chunkOverlap: 0 } },
+				{ id: 'loader', name: 'JSON Input Loader', type: jsonLoaderType, typeVersion: 1, parameters: { pointers: '/text', options: {} } },
+				{ id: 'capture', name: 'Capture Document', type: 'squared.compatibility.aiDocumentCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Document', type: 'main', index: 0 }]] },
+				'Token Splitter': { ai_textSplitter: [[{ node: 'JSON Input Loader', type: 'ai_textSplitter', index: 0 }]] },
+				'JSON Input Loader': { ai_document: [[{ node: 'Capture Document', type: 'ai_document', index: 0 }]] },
+			},
+		};
+		const jsonLoaderResult = await engine.execute(jsonLoaderWorkflow, { input: { text: 'one two three' } });
+		assert.equal(jsonLoaderResult.status, 'succeeded', jsonLoaderResult.error);
+		const jsonDocuments = jsonLoaderResult.output[0]?.json.documents;
+		assert.deepEqual(jsonDocuments?.map(({ pageContent }) => pageContent), ['one two', ' three']);
+		runtime.catalog.markValidatedWithEvidence(jsonLoaderType, {
+			typeVersion: 1,
+			test: 'JSON Input Loader v1 follows a JSON pointer and supplies documents through a connected published token splitter',
+			operation: 'pointers=/text; connected text splitter chunkSize=2',
+			contracts: [...new Set([...(runtime.getSnapshot().nodes.find((node) => node.nodeType === jsonLoaderType)?.interfacesUsed ?? []), 'ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData'])],
+			expected: { pageContentChunks: ['one two', ' three'] },
+			observed: { pageContentChunks: jsonDocuments.map(({ pageContent }) => pageContent) },
+			status: 'passed',
+		});
+		executions.push({ nodeType: jsonLoaderType, typeVersion: 1, test: 'JSON Input Loader v1 follows a JSON pointer and supplies documents through a connected published token splitter', status: 'passed', output: jsonLoaderResult.output, metadata: jsonLoaderResult.metadata });
+
+		const binaryLoaderType = '@n8n/n8n-nodes-langchain.documentBinaryInputLoader';
+		const binaryLoaderWorkflow = {
+			id: 'squared-compatibility-binary-input-loader', name: 'Published Binary Input Loader v1',
+			nodes: [manual,
+				{ id: 'splitter', name: 'Token Splitter', type: tokenSplitterType, typeVersion: 1, parameters: { chunkSize: 2, chunkOverlap: 0 } },
+				{ id: 'loader', name: 'Binary Input Loader', type: binaryLoaderType, typeVersion: 1, parameters: { loader: 'textLoader', binaryDataKey: 'data', options: {} } },
+				{ id: 'capture', name: 'Capture Document', type: 'squared.compatibility.aiDocumentCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Document', type: 'main', index: 0 }]] },
+				'Token Splitter': { ai_textSplitter: [[{ node: 'Binary Input Loader', type: 'ai_textSplitter', index: 0 }]] },
+				'Binary Input Loader': { ai_document: [[{ node: 'Capture Document', type: 'ai_document', index: 0 }]] },
+			},
+		};
+		const binaryLoaderResult = await engine.execute(binaryLoaderWorkflow, {
+			input: { json: { fixture: true }, binary: { data: { data: Buffer.from('one two three').toString('base64'), fileName: 'fixture.txt', fileExtension: 'txt', mimeType: 'text/plain' } } },
+		});
+		assert.equal(binaryLoaderResult.status, 'succeeded', binaryLoaderResult.error);
+		const binaryDocuments = binaryLoaderResult.output[0]?.json.documents;
+		assert.deepEqual(binaryDocuments?.map(({ pageContent }) => pageContent), ['one two', ' three']);
+		runtime.catalog.markValidatedWithEvidence(binaryLoaderType, {
+			typeVersion: 1,
+			test: 'Binary Input Loader v1 reads a real binary buffer and supplies token-split documents',
+			operation: 'loader=textLoader;binaryDataKey=data;connected token splitter chunkSize=2',
+			contracts: [...new Set([...(runtime.getSnapshot().nodes.find((node) => node.nodeType === binaryLoaderType)?.interfacesUsed ?? []), 'IExecuteFunctions.helpers.getBinaryDataBuffer', 'ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData'])],
+			expected: { pageContentChunks: ['one two', ' three'] },
+			observed: { pageContentChunks: binaryDocuments.map(({ pageContent }) => pageContent) },
+			status: 'passed',
+		});
+		executions.push({ nodeType: binaryLoaderType, typeVersion: 1, test: 'Binary Input Loader v1 reads a real binary buffer and supplies token-split documents', status: 'passed', output: binaryLoaderResult.output, metadata: binaryLoaderResult.metadata });
+
+		const memoryType = '@n8n/n8n-nodes-langchain.memoryBufferWindow';
+		const sessionId = `squared-compatibility-${globalThis.crypto.randomUUID()}`;
+		const memoryWorkflow = {
+			id: 'squared-compatibility-memory-buffer-window', name: 'Published Memory Buffer Window v1.4',
+			nodes: [manual,
+				{ id: 'memory', name: 'Memory', type: memoryType, typeVersion: 1.4, parameters: { sessionIdType: 'fromInput', contextWindowLength: 1 } },
+				{ id: 'capture', name: 'Capture Memory', type: 'squared.compatibility.aiMemoryCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Memory', type: 'main', index: 0 }]] },
+				Memory: { ai_memory: [[{ node: 'Capture Memory', type: 'ai_memory', index: 0 }]] },
+			},
+		};
+		const firstMemoryResult = await engine.execute(memoryWorkflow, { input: { sessionId, toRemember: 'first question', reply: 'first answer' } });
+		assert.equal(firstMemoryResult.status, 'succeeded', firstMemoryResult.error);
+		const secondMemoryResult = await engine.execute(memoryWorkflow, { input: { sessionId, toRemember: 'latest question', reply: 'latest answer' } });
+		assert.equal(secondMemoryResult.status, 'succeeded', secondMemoryResult.error);
+		const memoryResult = await engine.execute(memoryWorkflow, { input: { sessionId } });
+		assert.equal(memoryResult.status, 'succeeded', memoryResult.error);
+		assert.deepEqual(memoryResult.output.map((item) => item.json), [{ history: ['latest question', 'latest answer'] }]);
+		runtime.catalog.markValidatedWithEvidence(memoryType, {
+			typeVersion: 1.4,
+			test: 'Memory Buffer Window v1.4 retains its session across runs and enforces the one-turn context window',
+			operation: 'saveContext/loadMemoryVariables across three workflow executions; contextWindowLength=1',
+			contracts: [...new Set([...(runtime.getSnapshot().nodes.find((node) => node.nodeType === memoryType)?.interfacesUsed ?? []), 'ISupplyDataFunctions.supplyData', 'ISupplyDataFunctions.addInputData', 'ISupplyDataFunctions.addOutputData', 'getWorkflow()', 'getNodeParameter()', 'getInputData()'])],
+			expected: { history: ['latest question', 'latest answer'] },
+			observed: { status: memoryResult.status, history: memoryResult.output[0]?.json.history },
+			status: 'passed',
+		});
+		executions.push({ nodeType: memoryType, typeVersion: 1.4, test: 'Memory Buffer Window v1.4 retains its session across runs and enforces the one-turn context window', status: 'passed', output: memoryResult.output, metadata: memoryResult.metadata });
 	}
 
 	await execute('Set v3.5 expression and keep input fields', 'n8n-nodes-base.set', 3.5, {
@@ -512,11 +741,47 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		assert.match(result.output[0].json.html, /Hello <strong>world<\/strong>/);
 	} });
 
+	let openAiFixtureRequest;
+	let openAiFixtureAuthorization;
+	let openAiEmbeddingRequest;
+	let openAiEmbeddingAuthorization;
 	const fixtureServer = createServer(async (request, response) => {
 		const url = new URL(request.url, 'http://127.0.0.1');
 		if (url.pathname === '/feed.rss') {
 			response.writeHead(200, { 'content-type': 'application/rss+xml' });
 			response.end('<rss version="2.0"><channel><title>Squared fixture</title><link>https://example.test</link><description>Fixture feed</description><item><title>New event</title><link>https://example.test/new-event</link><guid>new-event</guid><pubDate>Fri, 01 Jan 2999 00:00:00 GMT</pubDate><description>Published fixture item</description></item></channel></rss>');
+			return;
+		}
+		if (url.pathname === '/v1/chat/completions' && request.method === 'POST') {
+			let body = '';
+			for await (const chunk of request) body += chunk;
+			openAiFixtureRequest = JSON.parse(body);
+			openAiFixtureAuthorization = request.headers.authorization;
+			const responseText = JSON.stringify(openAiFixtureRequest.messages).includes('Above, the Completion')
+				? '{"output":{"label":"repaired","count":4}}'
+				: 'fixture model response';
+			response.writeHead(200, { 'content-type': 'application/json' });
+			response.end(JSON.stringify({
+				id: 'chatcmpl-squared-fixture', object: 'chat.completion', created: 1_900_000_000, model: 'gpt-4o-mini',
+				choices: [{ index: 0, message: { role: 'assistant', content: responseText }, finish_reason: 'stop' }],
+				usage: { prompt_tokens: 3, completion_tokens: 3, total_tokens: 6 },
+			}));
+			return;
+		}
+		if (url.pathname === '/v1/embeddings' && request.method === 'POST') {
+			let body = '';
+			for await (const chunk of request) body += chunk;
+			openAiEmbeddingRequest = JSON.parse(body);
+			openAiEmbeddingAuthorization = request.headers.authorization;
+			const embeddingFor = (text) => String(text).toLowerCase().includes('alpha') ? [1, 0, 0]
+				: String(text).toLowerCase().includes('beta') ? [0, 1, 0] : [0.8, 0.2, 0];
+			const embeddedInputs = Array.isArray(openAiEmbeddingRequest.input) ? openAiEmbeddingRequest.input : [openAiEmbeddingRequest.input];
+			response.writeHead(200, { 'content-type': 'application/json' });
+			response.end(JSON.stringify({
+				object: 'list', model: 'text-embedding-3-small',
+				data: embeddedInputs.map((text, index) => ({ object: 'embedding', index, embedding: embeddingFor(text) })),
+				usage: { prompt_tokens: 4, total_tokens: 4 },
+			}));
 			return;
 		}
 		response.writeHead(200, { 'content-type': 'application/json' });
@@ -553,6 +818,115 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		const address = fixtureServer.address();
 		if (!address || typeof address === 'string') throw new Error('HTTP fixture did not bind to an ephemeral port');
 		controlledApiServerUrl = `http://127.0.0.1:${address.port}`;
+		const chatModelType = '@n8n/n8n-nodes-langchain.lmChatOpenAi';
+		await execute('OpenAI Chat Model v1.3 invokes the published model against a local OpenAI-compatible endpoint using its declared credential', chatModelType, 1.3, {
+			id: 'squared-compatibility-openai-chat-model', name: 'Published OpenAI Chat Model v1.3',
+			nodes: [manual,
+				{ id: 'model', name: 'OpenAI Chat Model', type: chatModelType, typeVersion: 1.3, parameters: { model: { mode: 'id', value: 'gpt-4o-mini' }, responsesApiEnabled: false, options: { maxRetries: 0, temperature: 0, timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+				{ id: 'capture', name: 'Capture Model', type: 'squared.compatibility.aiLanguageModelCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Model', type: 'main', index: 0 }]] },
+				'OpenAI Chat Model': { ai_languageModel: [[{ node: 'Capture Model', type: 'ai_languageModel', index: 0 }]] },
+			},
+		}, { prompt: 'squared fixture prompt' }, { output: [{ content: 'fixture model response' }], assertResult() {
+			assert.equal(openAiFixtureAuthorization, 'Bearer fixture-openai-key');
+			assert.equal(openAiFixtureRequest?.model, 'gpt-4o-mini');
+			assert.ok(openAiFixtureRequest?.messages?.some((message) => message.content === 'squared fixture prompt'));
+		} });
+		const embeddingsType = '@n8n/n8n-nodes-langchain.embeddingsOpenAi';
+		await execute('OpenAI Embeddings v1.2 embeds two deterministic texts through its published credential and local endpoint', embeddingsType, 1.2, {
+			id: 'squared-compatibility-openai-embeddings', name: 'Published OpenAI Embeddings v1.2',
+			nodes: [manual,
+				{ id: 'embeddings', name: 'OpenAI Embeddings', type: embeddingsType, typeVersion: 1.2, parameters: { model: 'text-embedding-3-small', options: { dimensions: 3, encodingFormat: 'float', timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+				{ id: 'capture', name: 'Capture Embeddings', type: 'squared.compatibility.aiEmbeddingCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Embeddings', type: 'main', index: 0 }]] },
+				'OpenAI Embeddings': { ai_embedding: [[{ node: 'Capture Embeddings', type: 'ai_embedding', index: 0 }]] },
+			},
+		}, { fixture: true }, { output: [{ vectors: [[1, 0, 0], [0, 1, 0]] }], assertResult() {
+			assert.equal(openAiEmbeddingAuthorization, 'Bearer fixture-openai-key');
+			assert.equal(openAiEmbeddingRequest?.model, 'text-embedding-3-small');
+			assert.deepEqual(openAiEmbeddingRequest?.input, ['squared alpha', 'squared beta']);
+			assert.equal(openAiEmbeddingRequest?.dimensions, 3);
+		} });
+		const vectorStoreType = '@n8n/n8n-nodes-langchain.vectorStoreInMemory';
+		const vectorStoreKey = `squared-compatibility-${globalThis.crypto.randomUUID()}`;
+		const vectorStoreInsertWorkflow = {
+			id: 'squared-compatibility-in-memory-vector-store', name: 'Published In-memory Vector Store v1.2 insert',
+			nodes: [manual,
+				{ id: 'store', name: 'Simple Vector Store', type: vectorStoreType, typeVersion: 1.2, parameters: { mode: 'insert', memoryKey: { mode: 'id', value: vectorStoreKey }, clearStore: true } },
+				{ id: 'embeddings', name: 'OpenAI Embeddings', type: embeddingsType, typeVersion: 1.2, parameters: { model: 'text-embedding-3-small', options: { dimensions: 3, encodingFormat: 'float', timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+				{ id: 'loader', name: 'Default Data Loader', type: '@n8n/n8n-nodes-langchain.documentDefaultDataLoader', typeVersion: 1.1, parameters: { dataType: 'json', jsonMode: 'allInputData', textSplittingMode: 'simple', options: {} } },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Simple Vector Store', type: 'main', index: 0 }]] },
+				'OpenAI Embeddings': { ai_embedding: [[{ node: 'Simple Vector Store', type: 'ai_embedding', index: 0 }]] },
+				'Default Data Loader': { ai_document: [[{ node: 'Simple Vector Store', type: 'ai_document', index: 0 }]] },
+			},
+		};
+		await execute('Simple Vector Store v1.2 insert embeds two documents with its published document loader and embedding subnodes', vectorStoreType, 1.2, vectorStoreInsertWorkflow,
+			[{ json: { text: 'alpha first document' } }, { json: { text: 'beta second document' } }],
+			{ resultDescription: 'Two documents inserted into the workflow-scoped in-memory vector store' });
+		const vectorStoreLoadWorkflow = {
+			...vectorStoreInsertWorkflow,
+			name: 'Published In-memory Vector Store v1.2 load',
+			nodes: [manual,
+				{ id: 'store', name: 'Simple Vector Store', type: vectorStoreType, typeVersion: 1.2, parameters: { mode: 'load', memoryKey: { mode: 'id', value: vectorStoreKey }, prompt: '={{$json.query}}', topK: 2, includeDocumentMetadata: false } },
+				{ id: 'embeddings', name: 'OpenAI Embeddings', type: embeddingsType, typeVersion: 1.2, parameters: { model: 'text-embedding-3-small', options: { dimensions: 3, encodingFormat: 'float', timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Simple Vector Store', type: 'main', index: 0 }]] },
+				'OpenAI Embeddings': { ai_embedding: [[{ node: 'Simple Vector Store', type: 'ai_embedding', index: 0 }]] },
+			},
+		};
+		await execute('Simple Vector Store v1.2 load retrieves the closest published document after a separate execution', vectorStoreType, 1.2, vectorStoreLoadWorkflow,
+			{ query: 'alpha query' },
+			{ resultDescription: 'The closest alpha document was ranked first', assertResult(result) {
+				assert.equal(result.output.length, 2);
+				assert.match(result.output[0]?.json.document?.pageContent ?? '', /alpha first document/);
+				assert.ok(result.output[0]?.json.score > result.output[1]?.json.score);
+			} });
+		const vectorStoreRetrieveWorkflow = {
+			id: 'squared-compatibility-in-memory-vector-store-subnode', name: 'Published In-memory Vector Store v1.2 retrieve',
+			nodes: [manual,
+				{ id: 'store', name: 'Simple Vector Store', type: vectorStoreType, typeVersion: 1.2, parameters: { mode: 'retrieve', memoryKey: { mode: 'id', value: vectorStoreKey } } },
+				{ id: 'embeddings', name: 'OpenAI Embeddings', type: embeddingsType, typeVersion: 1.2, parameters: { model: 'text-embedding-3-small', options: { dimensions: 3, encodingFormat: 'float', timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+				{ id: 'capture', name: 'Capture Vector Store', type: 'squared.compatibility.aiVectorStoreCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Vector Store', type: 'main', index: 0 }]] },
+				'OpenAI Embeddings': { ai_embedding: [[{ node: 'Simple Vector Store', type: 'ai_embedding', index: 0 }]] },
+				'Simple Vector Store': { ai_vectorStore: [[{ node: 'Capture Vector Store', type: 'ai_vectorStore', index: 0 }]] },
+			},
+		};
+		await execute('Simple Vector Store v1.2 supplies a searchable vector store and releases it after a real downstream consumer', vectorStoreType, 1.2, vectorStoreRetrieveWorkflow,
+			{ fixture: true },
+			{ resultDescription: 'The downstream AI consumer searched the existing store and received the closest document', assertResult(result) {
+				const documents = result.output[0]?.json.documents;
+				assert.equal(documents?.length, 2);
+				assert.match(documents[0]?.pageContent ?? '', /alpha first document/);
+			} });
+		const structuredParserType = '@n8n/n8n-nodes-langchain.outputParserStructured';
+		const autoFixParserType = '@n8n/n8n-nodes-langchain.outputParserAutofixing';
+		await execute('Auto-fixing Output Parser v1 repairs an invalid structured response using the connected published model', autoFixParserType, 1, {
+			id: 'squared-compatibility-auto-fixing-output-parser', name: 'Published Auto-fixing Output Parser v1',
+			nodes: [manual,
+				{ id: 'model', name: 'OpenAI Chat Model', type: chatModelType, typeVersion: 1.3, parameters: { model: { mode: 'id', value: 'gpt-4o-mini' }, responsesApiEnabled: false, options: { maxRetries: 0, timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+				{ id: 'structured-parser', name: 'Structured Output Parser', type: structuredParserType, typeVersion: 1.3, parameters: { schemaType: 'manual', inputSchema: JSON.stringify({ type: 'object', properties: { label: { type: 'string' }, count: { type: 'integer' } }, required: ['label', 'count'], additionalProperties: false }), autoFix: false } },
+				{ id: 'auto-fix-parser', name: 'Auto-fixing Output Parser', type: autoFixParserType, typeVersion: 1, parameters: { options: {} } },
+				{ id: 'capture', name: 'Capture Parser', type: 'squared.compatibility.aiOutputParserCapture', typeVersion: 1, parameters: {} },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Capture Parser', type: 'main', index: 0 }]] },
+				'OpenAI Chat Model': { ai_languageModel: [[{ node: 'Auto-fixing Output Parser', type: 'ai_languageModel', index: 0 }]] },
+				'Structured Output Parser': { ai_outputParser: [[{ node: 'Auto-fixing Output Parser', type: 'ai_outputParser', index: 0 }]] },
+				'Auto-fixing Output Parser': { ai_outputParser: [[{ node: 'Capture Parser', type: 'ai_outputParser', index: 0 }]] },
+			},
+		}, { text: 'not valid JSON' }, { output: [{ parsed: { output: { label: 'repaired', count: 4 } } }], assertResult() {
+			assert.match(JSON.stringify(openAiFixtureRequest?.messages), /not valid JSON/);
+		} });
 		await execute('Npm v1 getMetadata routes a relative request through the published declarative API and credential schema', 'n8n-nodes-base.npm', 1, {
 			name: 'Published Npm v1 declarative getMetadata',
 			nodes: [manual, {

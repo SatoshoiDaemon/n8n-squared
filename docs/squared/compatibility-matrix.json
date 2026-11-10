@@ -229,13 +229,13 @@
         "n8n-nodes-base@2.42.5"
       ],
       "nodesDiscovered": 569,
-      "deterministicExecutions": 55,
-      "nodesValidated": 37,
+      "deterministicExecutions": 68,
+      "nodesValidated": 48,
       "nodesLoaded": 567,
       "nodesConfigurable": 567,
       "nodesExecutable": 567,
-      "credentialSchemasLoaded": 5,
-      "credentialSchemasConfigurable": 5,
+      "credentialSchemasLoaded": 6,
+      "credentialSchemasConfigurable": 6,
       "differentialAgainstN8n": false,
       "evidenceFile": "docs/squared/compatibility-runtime-results.json"
     },
@@ -245,9 +245,9 @@
       "loaded": 567,
       "configurable": 567,
       "executable": 567,
-      "validated": 37
+      "validated": 48
     },
-    "fullyValidatedNodes": 37,
+    "fullyValidatedNodes": 48,
     "knownLimitations": [
       "Executable means an adapter can dispatch to a supported published lifecycle; validated means at least one deterministic operation completed successfully.",
       "Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.",
@@ -1226,6 +1226,7 @@
         "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -1235,7 +1236,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentBinaryInputLoader",
@@ -1257,7 +1258,38 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Binary Input Loader v1 reads a real binary buffer and supplies token-split documents",
+          "operation": "loader=textLoader;binaryDataKey=data;connected token splitter chunkSize=2",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType",
+            "IExecuteFunctions.helpers.getBinaryDataBuffer",
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData"
+          ],
+          "expected": {
+            "pageContentChunks": [
+              "one two",
+              " three"
+            ]
+          },
+          "observed": {
+            "pageContentChunks": [
+              "one two",
+              " three"
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -1288,6 +1320,7 @@
         "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -1297,7 +1330,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
@@ -1320,7 +1353,32 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.1,
+          "test": "Default Data Loader v1.1 converts deterministic incoming JSON into a real LangChain document",
+          "operation": "dataType=json;jsonMode=allInputData;textSplittingMode=simple",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType",
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData"
+          ],
+          "expected": {
+            "documentCount": 1,
+            "pageContentIncludes": "Squared document fixture"
+          },
+          "observed": {
+            "documentCount": 1,
+            "pageContent": "Squared document fixture"
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -1416,6 +1474,7 @@
         "IExecuteFunctions.description",
         "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -1425,7 +1484,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.documentJsonInputLoader",
@@ -1447,7 +1506,36 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "JSON Input Loader v1 follows a JSON pointer and supplies documents through a connected published token splitter",
+          "operation": "pointers=/text; connected text splitter chunkSize=2",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType",
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData"
+          ],
+          "expected": {
+            "pageContentChunks": [
+              "one two",
+              " three"
+            ]
+          },
+          "observed": {
+            "pageContentChunks": [
+              "one two",
+              " three"
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -2166,7 +2254,9 @@
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.getSecureEgressFilter",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -2176,7 +2266,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
@@ -2200,7 +2290,65 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.2,
+          "test": "OpenAI Embeddings v1.2 embeds two deterministic texts through its published credential and local endpoint",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.getSecureEgressFilter",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "vectors": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ]
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "vectors": [
+                  [
+                    1,
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1,
+                    0
+                  ]
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -3560,8 +3708,10 @@
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.helpers",
+        "IExecuteFunctions.helpers.getSecureEgressFilter",
         "IExecuteFunctions.methods",
         "ILoadOptionsFunctions",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions",
@@ -3572,7 +3722,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
@@ -3597,7 +3747,43 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.3,
+          "test": "OpenAI Chat Model v1.3 invokes the published model against a local OpenAI-compatible endpoint using its declared credential",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getCredentials",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.helpers",
+            "IExecuteFunctions.helpers.getSecureEgressFilter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "content": "fixture model response"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "content": "fixture model response"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -4478,10 +4664,12 @@
         "IExecuteFunctions",
         "IExecuteFunctions.cleanupStaleBuffers",
         "IExecuteFunctions.description",
+        "IExecuteFunctions.evaluateExpression",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.getWorkflow",
         "IExecuteFunctions.memoryBuffer",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -4491,7 +4679,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
@@ -4517,7 +4705,42 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.4,
+          "test": "Memory Buffer Window v1.4 retains its session across runs and enforces the one-turn context window",
+          "operation": "saveContext/loadMemoryVariables across three workflow executions; contextWindowLength=1",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.evaluateExpression",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflow",
+            "INodeExecutionData",
+            "INodeType",
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData",
+            "getWorkflow()",
+            "getNodeParameter()",
+            "getInputData()"
+          ],
+          "expected": {
+            "history": [
+              "latest question",
+              "latest answer"
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "history": [
+              "latest question",
+              "latest answer"
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -5696,6 +5919,7 @@
         "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -5705,7 +5929,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserAutofixing",
@@ -5727,7 +5951,50 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Auto-fixing Output Parser v1 repairs an invalid structured response using the connected published model",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": {
+                  "output": {
+                    "label": "repaired",
+                    "count": 4
+                  }
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": {
+                  "output": {
+                    "label": "repaired",
+                    "count": 4
+                  }
+                }
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -5751,6 +6018,7 @@
         "IExecuteFunctions",
         "IExecuteFunctions.description",
         "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -5760,7 +6028,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserItemList",
@@ -5782,7 +6050,45 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Item List Output Parser v1 parses and limits a deterministic response through a real AI connection",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": [
+                  "alpha",
+                  "beta"
+                ]
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": [
+                  "alpha",
+                  "beta"
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -5817,6 +6123,7 @@
         "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -5826,7 +6133,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.outputParserStructured",
@@ -5851,7 +6158,50 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.3,
+          "test": "Structured Output Parser v1.3 validates a JSON Schema and unwraps the documented output field",
+          "operation": "default",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": {
+                  "output": {
+                    "label": "fixture",
+                    "count": 3
+                  }
+                }
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "parsed": {
+                  "output": {
+                    "label": "fixture",
+                    "count": 3
+                  }
+                }
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -6512,6 +6862,7 @@
         "IExecuteFunctions.description",
         "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType",
         "INodeTypeDescription",
         "ISupplyDataFunctions"
@@ -6521,7 +6872,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.textSplitterTokenSplitter",
@@ -6543,7 +6894,34 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1,
+          "test": "Token Text Splitter v1 counts deterministic cl100k_base token chunks through a real AI connection",
+          "operation": "splitText(\"one two three\") with chunkSize 2 and cl100k_base",
+          "contracts": [
+            "ISupplyDataFunctions.supplyData",
+            "ISupplyDataFunctions.addInputData",
+            "ISupplyDataFunctions.addOutputData",
+            "ISupplyDataFunctions.logAiEvent"
+          ],
+          "expected": {
+            "chunks": [
+              "one two",
+              " three"
+            ],
+            "aiExecutionLogged": true
+          },
+          "observed": {
+            "chunks": [
+              "one two",
+              " three"
+            ],
+            "aiExecutionLogged": true
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
@@ -7446,8 +7824,12 @@
       ],
       "interfacesUsed": [
         "IExecuteFunctions",
+        "IExecuteFunctions.getInputConnectionData",
+        "IExecuteFunctions.getNode",
+        "IExecuteFunctions.getNodeParameter",
         "IExecuteFunctions.logger",
         "ILoadOptionsFunctions",
+        "INodeExecutionData",
         "INodeType",
         "ISupplyDataFunctions"
       ],
@@ -7456,7 +7838,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
@@ -7481,7 +7863,164 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.2,
+          "test": "Simple Vector Store v1.2 insert embeds two documents with its published document loader and embedding subnodes",
+          "operation": "mode=insert",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getExecutionCancelSignal",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.logAiEvent",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "result": "Two documents inserted into the workflow-scoped in-memory vector store"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "metadata": {
+                  "source": "blob",
+                  "blobType": "application/json",
+                  "loc": {
+                    "lines": {
+                      "from": 1,
+                      "to": 1
+                    }
+                  }
+                },
+                "pageContent": "alpha first document"
+              },
+              {
+                "metadata": {
+                  "source": "blob",
+                  "blobType": "application/json",
+                  "loc": {
+                    "lines": {
+                      "from": 1,
+                      "to": 1
+                    }
+                  }
+                },
+                "pageContent": "beta second document"
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1.2,
+          "test": "Simple Vector Store v1.2 load retrieves the closest published document after a separate execution",
+          "operation": "mode=load",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.logAiEvent",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "result": "The closest alpha document was ranked first"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "document": {
+                  "pageContent": "alpha first document"
+                },
+                "score": 1
+              },
+              {
+                "document": {
+                  "pageContent": "beta second document"
+                },
+                "score": 0
+              }
+            ],
+            "binary": [
+              {},
+              {}
+            ]
+          },
+          "status": "passed"
+        },
+        {
+          "typeVersion": 1.2,
+          "test": "Simple Vector Store v1.2 supplies a searchable vector store and releases it after a real downstream consumer",
+          "operation": "mode=retrieve",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "result": "The downstream AI consumer searched the existing store and received the closest document"
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "documents": [
+                  {
+                    "pageContent": "alpha first document",
+                    "metadata": {
+                      "source": "blob",
+                      "blobType": "application/json",
+                      "loc": {
+                        "lines": {
+                          "from": 1,
+                          "to": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "pageContent": "beta second document",
+                    "metadata": {
+                      "source": "blob",
+                      "blobType": "application/json",
+                      "loc": {
+                        "lines": {
+                          "from": 1,
+                          "to": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",

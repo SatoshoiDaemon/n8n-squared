@@ -155,6 +155,41 @@ test('supplyData output flows across ai connections into executable nodes', asyn
 	assert.deepEqual(result.output.map((item) => item.json), [{ model: 'fixture-model', prompt: 'hello' }]);
 });
 
+test('supplyData closeFunction runs after its AI consumer on success and failure', async () => {
+	let closeCount = 0;
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.resource', versions: [1], async supplyData() {
+		return { ai_resource: { response: { value: 'open' }, async closeFunction() { closeCount += 1; } } };
+	} });
+	registry.register({ type: 'test.resourceConsumer', versions: [1], async execute(context) {
+		const resource = await context.getInputConnectionData('ai_resource', 0, 0);
+		if (context.getNodeParameter('fail', 0, false)) throw new Error('controlled consumer failure');
+		return [[{ json: { value: resource.value, closeCountDuringConsumption: closeCount } }]];
+	} });
+	const workflow = (fail = false) => ({
+		id: 'ai-resource-lifecycle', name: 'AI resource lifecycle',
+		nodes: [
+			{ id: 'manual', name: 'Manual', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'resource', name: 'Resource', type: 'test.resource', typeVersion: 1, parameters: {} },
+			{ id: 'consumer', name: 'Consumer', type: 'test.resourceConsumer', typeVersion: 1, parameters: { fail } },
+		],
+		connections: {
+			Manual: { main: [[{ node: 'Consumer', type: 'main', index: 0 }]] },
+			Resource: { ai_resource: [[{ node: 'Consumer', type: 'ai_resource', index: 0 }]] },
+		},
+	});
+	const engine = new GraphExecutionEngine(registry);
+	const success = await engine.execute(workflow(), { input: { value: 1 } });
+	assert.equal(success.status, 'succeeded', success.error);
+	assert.deepEqual(success.output[0]?.json, { value: 'open', closeCountDuringConsumption: 0 });
+	assert.equal(closeCount, 1);
+
+	const failure = await engine.execute(workflow(true), { input: { value: 1 } });
+	assert.equal(failure.status, 'failed');
+	assert.match(failure.error ?? '', /controlled consumer failure/);
+	assert.equal(closeCount, 2);
+});
+
 test('engine rejects node version mismatches and loops explicitly', async () => {
 	const registry = registryForBranching();
 	const engine = new GraphExecutionEngine(registry);

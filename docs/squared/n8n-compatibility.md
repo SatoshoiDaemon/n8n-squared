@@ -4,7 +4,7 @@
 
 O snapshot upstream é `n8n@2.42.7`; os manifests npm usados aqui são `n8n-nodes-base@2.42.5` e `@n8n/n8n-nodes-langchain@2.42.5`. O catálogo tem 569 tipos: 444 do pacote base e 125 do LangChain.
 
-A matriz atual registra **567 classes carregadas, configuráveis e com adapter resolvido**, de 569 tipos descobertos; **37 tipos passaram por cenários reais em 55 execuções determinísticas**. Os 32 tipos validados até o PR #7 continuam cobertos. A onda anterior acrescentou `NPM` v1, `Character Text Splitter` v1 e `Interval` v1; esta acrescenta `HTML Extract` v1 e `Recursive Character Text Splitter` v1, além de cenários adicionais para Item Lists v3.1, Date & Time v2, XML v1 e Markdown v1. A suíte usa classes oficiais publicadas e registra versão, operação, contratos, esperado e observado; um cenário não comprova todas as operações de um node. O detalhamento está em [compatibility-matrix.json](compatibility-matrix.json) e [compatibility-runtime-results.json](compatibility-runtime-results.json).
+A matriz atual registra **567 classes carregadas, configuráveis e com adapter resolvido**, de 569 tipos descobertos; **49 tipos passaram por cenários reais em 69 execuções determinísticas**: 35 nodes-base e 14 nodes LangChain. Os cenários usam classes oficiais publicadas e registram versão, operação, contratos, esperado e observado; uma operação validada não comprova as demais. Esta rodada acrescenta `Basic LLM Chain` v1.3, executado com uma entrada opcional `ai_outputParser` desconectada e o `OpenAI Chat Model` oficial v1.3 contra um fixture local. O detalhamento está em [compatibility-matrix.json](compatibility-matrix.json) e [compatibility-runtime-results.json](compatibility-runtime-results.json).
 
 | Estado da matriz | Tipos |
 | --- | ---: |
@@ -12,7 +12,7 @@ A matriz atual registra **567 classes carregadas, configuráveis e com adapter r
 | Carregado | 567 / 569 |
 | Configurável | 567 / 569 |
 | Executável (adapter resolvido) | 567 / 569 |
-| Validado por cenário real | 37 / 569 |
+| Validado por cenário real | 49 / 569 |
 
 ## Runtime integrado
 
@@ -22,7 +22,7 @@ O runner de CI instala versões compatíveis de `n8n-nodes-base`, `@n8n/n8n-node
 
 O runtime agora cobre execução por versão, portas de entrada e saída, `pairedItem` básico, conexões de dados não-main, `supplyData()`, expressões usadas pelos cenários, dados estáticos persistidos, espera e retomada, binários persistidos por referência, retries, execução de `poll()`, ativação de `trigger()` e chamadas `webhook()`. O servidor e o scheduler registram workflows ativos no início, param triggers ao desativar ou encerrar, fazem polling e retomam execuções após espera.
 
-Além dos cenários anteriores, `NPM` v1 executou `getMetadata` pela classe oficial `RoutingNode` de `n8n-core`, usando URL relativa e credencial `npmApi` contra um registry local. `Character Text Splitter` v1 executou `supplyData()` na conexão AI e o objeto retornado dividiu texto real; a execução registrou os eventos e runs do subnode. `Interval` v1 foi ativado pelo serviço de workflows, emitiu para a fila, executou o grafo real e parou após desativação. O RSS local continua cobrindo `poll()`, e o Webhook oficial cobre registro/remoção de rota e chamada downstream. Os fixtures são locais e usam apenas credenciais sintéticas; nenhuma conta externa ou credencial da instalação n8n foi usada.
+Além dos cenários anteriores, `NPM` v1 executou `getMetadata` pela classe oficial `RoutingNode` de `n8n-core`, usando URL relativa e credencial `npmApi` contra um registry local. Os nodes de splitters, loaders, memory, parsers, OpenAI, vector store e `Basic LLM Chain` LangChain também foram executados com fixtures locais. O caso de `Basic LLM Chain` exercita o caminho de uma entrada AI opcional ausente e a chamada ao modelo conectado. `Interval` v1 foi ativado pelo serviço de workflows, emitiu para a fila, executou o grafo real e parou após desativação. O RSS local continua cobrindo `poll()`, e o Webhook oficial cobre registro/remoção de rota e chamada downstream. Os fixtures são locais e usam apenas credenciais sintéticas; nenhuma conta externa ou credencial da instalação n8n foi usada.
 
 ## Credenciais e requests
 
@@ -32,9 +32,9 @@ Os helpers HTTP aceitam métodos, headers, query, bodies JSON/form/multipart, ti
 
 ## Limites conhecidos
 
-- Os 567 adapters disponíveis não significam que todas as operações foram executadas; 530 tipos ainda não têm um cenário de validação. Duas entradas Enterprise estão excluídas pelo pacote/licença.
-- Dois tipos LangChain, `Character Text Splitter` e `Recursive Character Text Splitter`, passaram por cenário real; os outros nodes de chains, agents, embeddings e vector stores ainda precisam de fixtures e contratos específicos do ecossistema.
-- Os 37 tipos validados representam apenas as versões e operações registradas na matriz. Credenciais específicas, opções raras e todas as versões não ficam comprovadas por um cenário.
+- Os 567 adapters disponíveis não significam que todas as operações foram executadas; 520 tipos ainda não têm um cenário de validação. `Evaluation Trigger` e `Evaluation` são nodes Enterprise excluídos pela licença.
+- Os 14 tipos LangChain validados cobrem versões/operações específicas de loaders, memory, parsers, splitters, chat model, embeddings, vector store e uma cadeia LLM. Outros nodes e operações ainda precisam de fixtures e contratos do ecossistema.
+- Os 49 tipos validados representam apenas as versões e operações registradas na matriz. Credenciais específicas, opções raras e todas as versões não ficam comprovadas por um cenário.
 - `Code` v2 foi validado em JavaScript all-items e each-item com o `JavaScriptSandbox` publicado; o runner Python e a execução em processo isolado do task runner ainda não estão integrados.
 - Expressões cobrem um subconjunto seguro de `$json`, `$binary`, `$input`, `$items`, `$node`, `$execution` e `$workflow`; objetos/helpers de expressão do n8n ainda não estão completos.
 - A ativação/polling chama os métodos `trigger()`/`poll()` carregados da versão solicitada. O registro HTTP local usa as descrições oficiais de webhook e suporta auth Basic/Header; registro remoto por `webhookMethods`, JWT/OAuth interativo para webhooks, respostas síncronas por `Respond to Webhook`, `onMessage` e hooks especializados ainda precisam ser implementados/testados por família. Waits de tempo retomam pelo scheduler e waits que aceitam retomada manual usam `POST /api/executions/{id}/resume`.

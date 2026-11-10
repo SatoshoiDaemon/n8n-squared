@@ -51,7 +51,7 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 		runtime.catalog.markValidatedWithEvidence(nodeType, {
 			typeVersion,
 			test,
-			operation: describeOperation(workflow, nodeType),
+			operation: expected.operation ?? describeOperation(workflow, nodeType),
 			contracts: runtime.getSnapshot().nodes.find((node) => node.nodeType === nodeType)?.interfacesUsed ?? [],
 			expected: { status: 'succeeded', output: expected.output, binary: expected.binary, result: expected.resultDescription },
 			observed: { status: result.status, output: result.output.map((item) => item.json), binary: expected.observedBinary ?? result.output.map((item) => item.binary ?? {}) },
@@ -833,6 +833,22 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			assert.equal(openAiFixtureAuthorization, 'Bearer fixture-openai-key');
 			assert.equal(openAiFixtureRequest?.model, 'gpt-4o-mini');
 			assert.ok(openAiFixtureRequest?.messages?.some((message) => message.content === 'squared fixture prompt'));
+		} });
+		const chainLlmType = '@n8n/n8n-nodes-langchain.chainLlm';
+		await execute('Basic LLM Chain v1.3 executes with an unconnected optional output parser and a published OpenAI Chat Model', chainLlmType, 1.3, {
+			id: 'squared-compatibility-basic-llm-chain', name: 'Published Basic LLM Chain v1.3',
+			nodes: [manual,
+				{ id: 'chain', name: 'Basic LLM Chain', type: chainLlmType, typeVersion: 1.3, parameters: { prompt: '={{$json.prompt}}' } },
+				{ id: 'model', name: 'OpenAI Chat Model', type: chatModelType, typeVersion: 1.3, parameters: { model: { mode: 'id', value: 'gpt-4o-mini' }, responsesApiEnabled: false, options: { maxRetries: 0, temperature: 0, timeout: 3_000 } }, credentials: { openAiApi: { id: 'squared-openai-credential', name: 'Fixture OpenAI API' } } },
+			],
+			connections: {
+				Manual: { main: [[{ node: 'Basic LLM Chain', type: 'main', index: 0 }]] },
+				'OpenAI Chat Model': { ai_languageModel: [[{ node: 'Basic LLM Chain', type: 'ai_languageModel', index: 0 }]] },
+			},
+		}, { prompt: 'squared chain fixture prompt' }, { operation: 'run the default LLM chain with an expression prompt and connected OpenAI Chat Model', output: [{ text: 'fixture model response' }], assertResult() {
+			assert.equal(openAiFixtureAuthorization, 'Bearer fixture-openai-key');
+			assert.equal(openAiFixtureRequest?.model, 'gpt-4o-mini');
+			assert.ok(openAiFixtureRequest?.messages?.some((message) => String(message.content).includes('squared chain fixture prompt')));
 		} });
 		const embeddingsType = '@n8n/n8n-nodes-langchain.embeddingsOpenAi';
 		await execute('OpenAI Embeddings v1.2 embeds two deterministic texts through its published credential and local endpoint', embeddingsType, 1.2, {

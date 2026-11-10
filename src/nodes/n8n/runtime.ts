@@ -147,6 +147,11 @@ export class N8nNodePackageRuntime {
 		const adapter: NodeAdapter = {
 			type: record.nodeType,
 			versions,
+			getInputDefinitions: async (context) => {
+				const selected = selectNodeType(loaded.wrapper, context.node.typeVersion ?? 1);
+				const description = selected.description ?? loaded.description;
+				return resolveConnectionConfiguration(description.inputs, context.node.parameters ?? {}, 'main', record.nodeType, context, loaded.require);
+			},
 		};
 		const invoke = async (method: 'execute' | 'trigger' | 'poll' | 'webhook' | 'supplyData', context: GraphNodeContext): Promise<unknown> => {
 				const selected = loaded.wrapper.getNodeType
@@ -463,6 +468,10 @@ function createExecutionFacade(
 					if (options.extractValue) return extractNodeParameterValue(resolved, parameterName, context, description, workflowModule, itemIndex);
 					return resolved;
 				};
+			}
+			if (property === 'getInputConnectionData' && typeof value === 'function') {
+				return (connectionType: string, itemIndex = 0, inputIndex?: number) =>
+					(value as GraphNodeContext['getInputConnectionData'])(connectionType, inputIndex, itemIndex);
 			}
 			if (property === 'getCredentials' && typeof value === 'function') {
 				return async (credentialType: string, itemIndex = 0) => {

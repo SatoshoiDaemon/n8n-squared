@@ -22,8 +22,8 @@ Gerada a partir da árvore histórica indicada em [UPSTREAM.md](../../UPSTREAM.m
 | loaded | 567 / 569 |
 | configurable | 567 / 569 |
 | executable | 567 / 569 |
-| validated | 48 / 569 |
+| validated | 49 / 569 |
 
 Estados: descoberto vem dos manifests; carregado exige importar a classe publicada; configurável exige uma descrição com propriedades; executável exige um adapter de lifecycle que o runtime consiga resolver; validado exige ao menos um cenário real concluído. Um cenário valida apenas a versão e a operação registradas. O JSON também registra dependências, interfaces, licença, capabilities e falhas por node.
 
-A validação carregou 567/569 classes e executou 68 casos determinísticos com @n8n/n8n-nodes-langchain@2.42.5, n8n-nodes-base@2.42.5; 48 tipos passaram cenários reais e 6 schemas de credencial foram carregados. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.
+A validação carregou 567/569 classes e executou 69 casos determinísticos com @n8n/n8n-nodes-langchain@2.42.5, n8n-nodes-base@2.42.5; 49 tipos passaram cenários reais e 6 schemas de credencial foram carregados. Os resultados não são uma comparação diferencial com uma instância n8n. Veja [compatibility-runtime-results.json](./compatibility-runtime-results.json). Community packages descobertos na referência: não disponíveis.

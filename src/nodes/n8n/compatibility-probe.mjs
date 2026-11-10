@@ -850,6 +850,39 @@ export async function runN8nBaseCompatibilityProbe(packagesDirectory) {
 			assert.equal(openAiFixtureRequest?.model, 'gpt-4o-mini');
 			assert.ok(openAiFixtureRequest?.messages?.some((message) => String(message.content).includes('squared chain fixture prompt')));
 		} });
+		const langchainCodeType = '@n8n/n8n-nodes-langchain.code';
+		await execute('LangChain Code v1 reads current and linked node data through the official workflow data proxy', langchainCodeType, 1, {
+			id: 'squared-compatibility-langchain-code-workflow-proxy', name: 'Published LangChain Code v1 workflow data proxy',
+			nodes: [manual, {
+				id: 'code', name: 'LangChain Code', type: langchainCodeType, typeVersion: 1,
+				parameters: {
+					code: { execute: { code: `const proxy = this.getWorkflowDataProxy(0);
+						const child = await this.executeWorkflow({ code: {
+							id: 'squared-compatibility-inline-child',
+							name: 'Published inline subworkflow fixture',
+							nodes: [
+								{ id: 'child-manual', name: 'Manual', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+								{ id: 'child-noop', name: 'Child No Operation', type: 'n8n-nodes-base.noOp', typeVersion: 1, parameters: {} },
+							],
+							connections: { Manual: { main: [[{ node: 'Child No Operation', type: 'main', index: 0 }]] } },
+						} }, [{ json: { value: 'inline child output' } }], undefined, { returnLastRunOnly: true });
+						return [{ json: {
+							currentPrompt: proxy.$json.prompt,
+							priorPrompt: proxy.$node['Manual'].json.prompt,
+							workflowName: proxy.$workflow.name,
+							executionMode: proxy.$execution.mode,
+							childValue: child.data[0]?.[0]?.json.value,
+							childOutputCount: child.data[0]?.length,
+						} }];` } },
+					inputs: { input: [{ type: 'main', maxConnections: 1, required: true }] },
+					outputs: { output: [{ type: 'main' }] },
+				},
+			}],
+			connections: { Manual: { main: [[{ node: 'LangChain Code', type: 'main', index: 0 }]] } },
+		}, { prompt: 'workflow proxy fixture prompt' }, {
+			operation: 'run the official LangChain Code node with $json, $node, $workflow, and $execution proxy values',
+			output: [{ currentPrompt: 'workflow proxy fixture prompt', priorPrompt: 'workflow proxy fixture prompt', workflowName: 'Published LangChain Code v1 workflow data proxy', executionMode: 'test', childValue: 'inline child output', childOutputCount: 1 }],
+		});
 		const embeddingsType = '@n8n/n8n-nodes-langchain.embeddingsOpenAi';
 		await execute('OpenAI Embeddings v1.2 embeds two deterministic texts through its published credential and local endpoint', embeddingsType, 1.2, {
 			id: 'squared-compatibility-openai-embeddings', name: 'Published OpenAI Embeddings v1.2',

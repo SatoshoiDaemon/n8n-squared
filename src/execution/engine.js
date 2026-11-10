@@ -109,7 +109,13 @@ export class ExecutionEngine {
 					executionId: id,
 					mode: triggerType,
 					staticData,
-				executionMetadata: executionOptions.metadata,
+					executionMetadata: executionOptions.metadata,
+					resolveWorkflow: async (workflowInfo) => {
+						if (workflowInfo.code && typeof workflowInfo.code === 'object') return workflowInfo.code;
+						return workflowInfo.id ? await this.store.getWorkflow(workflowInfo.id) : undefined;
+					},
+					getWorkflowStaticData: async (workflowId) => await this.store.getWorkflowRuntimeState?.(workflowId) ?? {},
+					saveWorkflowStaticData: async (workflowId, state) => await this.store.saveWorkflowRuntimeState?.(workflowId, state),
 					...(executionOptions.initialOutput ? { initialOutput: executionOptions.initialOutput } : {}),
 					...(executionOptions.startNode ? { startNode: executionOptions.startNode } : {}),
 					...(executionOptions.webhookRequest ? { webhookRequest: executionOptions.webhookRequest } : {}),

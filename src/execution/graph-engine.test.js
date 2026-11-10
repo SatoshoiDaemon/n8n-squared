@@ -155,6 +155,66 @@ test('supplyData output flows across ai connections into executable nodes', asyn
 	assert.deepEqual(result.output.map((item) => item.json), [{ model: 'fixture-model', prompt: 'hello' }]);
 });
 
+test('declared optional AI connections return undefined when unconnected', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.optionalParserConsumer', versions: [1], getInputDefinitions: () => [
+		{ type: 'ai_outputParser', maxConnections: 1 },
+	], async execute(context) {
+		const parser = await context.getInputConnectionData('ai_outputParser', undefined, 0);
+		return [[{ json: { parserConnected: parser !== undefined } }]];
+	} });
+	const result = await new GraphExecutionEngine(registry).execute({
+		id: 'optional-ai-connection', name: 'Optional AI connection',
+		nodes: [
+			{ id: 'manual', name: 'Start', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'consumer', name: 'Consumer', type: 'test.optionalParserConsumer', typeVersion: 1, parameters: {} },
+		],
+		connections: { Start: { main: [[{ node: 'Consumer', type: 'main', index: 0 }]] } },
+	}, { input: { value: 1 }, startNode: 'Start' });
+	assert.equal(result.status, 'succeeded', result.error);
+	assert.deepEqual(result.output[0]?.json, { parserConnected: false });
+});
+
+test('AI connection reads reject types absent from the node input definition', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.typedAiConsumer', versions: [1], getInputDefinitions: () => [
+		{ type: 'ai_languageModel', maxConnections: 1 },
+	], async execute(context) {
+		await context.getInputConnectionData('ai_outputParser', undefined, 0);
+		return [[{ json: { unexpected: true } }]];
+	} });
+	const result = await new GraphExecutionEngine(registry).execute({
+		id: 'typed-ai-connection', name: 'Typed AI connection',
+		nodes: [
+			{ id: 'manual', name: 'Start', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'consumer', name: 'Consumer', type: 'test.typedAiConsumer', typeVersion: 1, parameters: {} },
+		],
+		connections: { Start: { main: [[{ node: 'Consumer', type: 'main', index: 0 }]] } },
+	}, { input: { value: 1 }, startNode: 'Start' });
+	assert.equal(result.status, 'failed');
+	assert.match(result.error ?? '', /does not have ai_outputParser input/);
+});
+
+test('required AI connections fail when the declared input port is unconnected', async () => {
+	const registry = new NodeAdapterRegistry();
+	registry.register({ type: 'test.requiredModelConsumer', versions: [1], getInputDefinitions: () => [
+		{ type: 'ai_languageModel', maxConnections: 1, required: true },
+	], async execute(context) {
+		const model = await context.getInputConnectionData('ai_languageModel', undefined, 0);
+		return [[{ json: { modelConnected: model !== undefined } }]];
+	} });
+	const result = await new GraphExecutionEngine(registry).execute({
+		id: 'required-ai-connection', name: 'Required AI connection',
+		nodes: [
+			{ id: 'manual', name: 'Start', type: 'n8n-nodes-base.manualTrigger', typeVersion: 1, parameters: {} },
+			{ id: 'consumer', name: 'Consumer', type: 'test.requiredModelConsumer', typeVersion: 1, parameters: {} },
+		],
+		connections: { Start: { main: [[{ node: 'Consumer', type: 'main', index: 0 }]] } },
+	}, { input: { value: 1 }, startNode: 'Start' });
+	assert.equal(result.status, 'failed');
+	assert.match(result.error ?? '', /requires ai_languageModel input at index 0/);
+});
+
 test('supplyData closeFunction runs after its AI consumer on success and failure', async () => {
 	let closeCount = 0;
 	const registry = new NodeAdapterRegistry();

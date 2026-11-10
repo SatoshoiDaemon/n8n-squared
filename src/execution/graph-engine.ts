@@ -98,6 +98,7 @@ export interface NodeAdapter {
 	type: string;
 	/** Exact typeVersion values supported by this implementation. */
 	versions: number[];
+	getInputDefinitions?(context: GraphNodeContext): Array<string | Record<string, unknown>> | Promise<Array<string | Record<string, unknown>>>;
 	execute?(context: GraphNodeContext): Promise<NodeOutput>;
 	trigger?(context: GraphNodeContext): Promise<unknown>;
 	poll?(context: GraphNodeContext): Promise<NodeOutput>;
@@ -282,7 +283,7 @@ export class GraphExecutionEngine {
 				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
 				const adapter = await this.registry.resolve(start.type, version);
 				if (!adapter?.poll) throw new Error(`Node ${start.type}@${version} does not implement poll()`);
-				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore });
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, getInputDefinitions: adapter.getInputDefinitions });
 				initialOutputRecord = normalizeOutput(await adapter.poll(context), getOutputPortCount(graph, start.name), []);
 				initialOutput = nodeExecutionPorts(initialOutputRecord.main ?? []);
 			}
@@ -290,7 +291,7 @@ export class GraphExecutionEngine {
 				const version = typeof start.typeVersion === 'number' ? start.typeVersion : 1;
 				const adapter = await this.registry.resolve(start.type, version);
 				if (!adapter?.webhook) throw new Error(`Node ${start.type}@${version} does not implement webhook()`);
-				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, webhookRequest: request.webhookRequest });
+				const context = createNodeContext({ graph, node: start, inputPorts: [], outputsByNode, executionId, mode, contextData, executionMetadata, credentialProvider: this.credentialProvider, binaryStore: this.binaryStore, webhookRequest: request.webhookRequest, getInputDefinitions: adapter.getInputDefinitions });
 				const result = await adapter.webhook(context);
 				const workflowData = isObject(result) && 'workflowData' in result ? result.workflowData : result;
 				initialOutputRecord = normalizeOutput(workflowData as NodeOutput, getOutputPortCount(graph, start.name), []);
@@ -350,6 +351,7 @@ export class GraphExecutionEngine {
 					executionMetadata,
 					credentialProvider: this.credentialProvider,
 					binaryStore: this.binaryStore,
+					getInputDefinitions: adapter.getInputDefinitions,
 				});
 				const hasMainInputConnection = (graph.incoming.get(node.name) ?? []).some((connection) => connection.targetType === 'main');
 
@@ -486,6 +488,7 @@ export class GraphExecutionEngine {
 			executionMetadata,
 			credentialProvider: this.credentialProvider,
 			binaryStore: this.binaryStore,
+			getInputDefinitions: adapter.getInputDefinitions,
 			emit: async (data) => emit(data.map((port) => port.map(normalizeItem)), snapshotContextData(contextData)),
 		});
 		const result = await adapter.trigger(context);
@@ -519,6 +522,7 @@ export class GraphExecutionEngine {
 			executionMetadata,
 			credentialProvider: this.credentialProvider,
 			binaryStore: this.binaryStore,
+			getInputDefinitions: adapter.getInputDefinitions,
 			webhookRequest,
 			webhookResponse: response,
 		});
@@ -538,6 +542,7 @@ function createNodeContext(args: {
 	executionMetadata: Map<string, unknown>;
 	credentialProvider?: CredentialProvider;
 	binaryStore?: GraphEngineLimits['binaryStore'];
+	getInputDefinitions?: NodeAdapter['getInputDefinitions'];
 	emit?: (data: NodeExecutionData[][]) => Promise<void>;
 	webhookRequest?: GraphWebhookRequest;
 	webhookResponse?: Record<string, unknown>;
@@ -575,7 +580,8 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 		if (!credential) throw new Error(`Credential ${reference.name} was not found`);
 		return credential;
 	};
-	return {
+	let context: GraphNodeContext;
+	context = {
 		executionId,
 		mode,
 		node,
@@ -585,11 +591,42 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 			if (connectionType !== 'main') throw new Error(`Input connection type ${connectionType} is not supported by the graph engine`);
 			return inputPorts[inputIndex] ?? [];
 		},
-		async getInputConnectionData(connectionType: string, inputIndex = 0, itemIndex = 0) {
-			const connection = (graph.incoming.get(node.name) ?? []).find((item) => item.targetType === connectionType && item.targetInput === inputIndex);
-			if (!connection) throw new Error(`Node ${node.name} has no ${connectionType} input at index ${inputIndex}`);
-			const sourcePorts = outputsByNode.get(connection.source.name)?.[connection.sourceType] ?? [];
-			return sourcePorts[connection.sourceOutput]?.[itemIndex];
+		async getInputConnectionData(connectionType: string, inputIndex?: number, itemIndex = 0) {
+			const definitions = args.getInputDefinitions ? await args.getInputDefinitions(context) : undefined;
+			const matchingDefinitions = definitions?.filter((definition) => {
+				const record = isObject(definition) ? definition : undefined;
+				return (record?.type ?? record?.name ?? definition) === connectionType;
+			}) ?? [];
+			if (definitions && matchingDefinitions.length === 0) {
+				throw new Error(`Node ${node.name} does not have ${connectionType} input`);
+			}
+			const connections = (graph.incoming.get(node.name) ?? [])
+				.filter((item) => item.targetType === connectionType && (inputIndex === undefined || item.targetInput === inputIndex))
+				.sort((left, right) => left.targetInput - right.targetInput);
+			const requiredInputIndex = matchingDefinitions.findIndex((definition, index) =>
+				isObject(definition) && definition.required === true && !connections.some((connection) => connection.targetInput === index));
+			if (requiredInputIndex !== -1) {
+				throw new Error(`Node ${node.name} requires ${connectionType} input at index ${requiredInputIndex}`);
+			}
+			const maxConnections = matchingDefinitions.reduce((total, definition) => {
+				const max = isObject(definition) ? Number(definition.maxConnections) : 0;
+				return total + (Number.isFinite(max) && max > 0 ? max : 0);
+			}, 0);
+			const returnsSingleValue = inputIndex !== undefined || maxConnections === 1;
+			if (maxConnections > 0 && connections.length > maxConnections) {
+				throw new Error(`Node ${node.name} has too many ${connectionType} inputs connected`);
+			}
+			if (connections.length === 0) {
+				if (inputIndex !== undefined && !definitions) {
+					throw new Error(`Node ${node.name} has no ${connectionType} input at index ${inputIndex}`);
+				}
+				return returnsSingleValue ? undefined : [];
+			}
+			const values = connections.map((connection) => {
+				const sourcePorts = outputsByNode.get(connection.source.name)?.[connection.sourceType] ?? [];
+				return sourcePorts[connection.sourceOutput]?.[itemIndex];
+			});
+			return returnsSingleValue ? values[0] : values;
 		},
 		getNodeParameter<T = unknown>(parameterName: string, itemIndex = 0, fallbackValue?: T, options: NodeParameterOptions = {}): T {
 			const value = parameterAtPath(parameterName);
@@ -707,6 +744,7 @@ const { graph, node, inputPorts, outputsByNode, executionId, mode, contextData, 
 			await args.emit(data);
 		},
 	};
+	return context;
 
 	function contextDataFor(type: string): Record<string, unknown> {
 		const key = type === 'flow' || type === 'global' ? 'flow' : `node:${node.id}`;

@@ -10,8 +10,8 @@
   "nodeTypesLoaded": 567,
   "nodeTypesConfigurable": 567,
   "nodeTypesExecutable": 567,
-  "nodeTypesValidated": 48,
-  "deterministicExecutions": 68,
+  "nodeTypesValidated": 49,
+  "deterministicExecutions": 69,
   "differentialAgainstN8n": false,
   "nodes": [
     {
@@ -518,10 +518,15 @@
         "IExecuteFunctions",
         "IExecuteFunctions.continueOnFail",
         "IExecuteFunctions.description",
+        "IExecuteFunctions.getExecutionCancelSignal",
+        "IExecuteFunctions.getExecutionId",
+        "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getInputData",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getWorkflow",
         "IExecuteFunctions.logger",
+        "INodeExecutionData",
         "INodeType"
       ],
       "capabilities": {
@@ -541,9 +546,48 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
-      "validationEvidence": [],
+      "validationEvidence": [
+        {
+          "typeVersion": 1.3,
+          "test": "Basic LLM Chain v1.3 executes with an unconnected optional output parser and a published OpenAI Chat Model",
+          "operation": "run the default LLM chain with an expression prompt and connected OpenAI Chat Model",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getExecutionCancelSignal",
+            "IExecuteFunctions.getExecutionId",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflow",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "text": "fixture model response"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "text": "fixture model response"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ],
       "knownFailures": []
     },
     {

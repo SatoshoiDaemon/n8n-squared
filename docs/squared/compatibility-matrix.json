@@ -229,8 +229,8 @@
         "n8n-nodes-base@2.42.5"
       ],
       "nodesDiscovered": 569,
-      "deterministicExecutions": 68,
-      "nodesValidated": 48,
+      "deterministicExecutions": 69,
+      "nodesValidated": 49,
       "nodesLoaded": 567,
       "nodesConfigurable": 567,
       "nodesExecutable": 567,
@@ -245,9 +245,9 @@
       "loaded": 567,
       "configurable": 567,
       "executable": 567,
-      "validated": 48
+      "validated": 49
     },
-    "fullyValidatedNodes": 48,
+    "fullyValidatedNodes": 49,
     "knownLimitations": [
       "Executable means an adapter can dispatch to a supported published lifecycle; validated means at least one deterministic operation completed successfully.",
       "Nodes execute actual installed package code, but n8n packages remain external and must be installed with their compatible dependencies.",
@@ -525,9 +525,13 @@
         "IExecuteFunctions",
         "IExecuteFunctions.continueOnFail",
         "IExecuteFunctions.description",
+        "IExecuteFunctions.getExecutionCancelSignal",
+        "IExecuteFunctions.getExecutionId",
+        "IExecuteFunctions.getInputConnectionData",
         "IExecuteFunctions.getInputData",
         "IExecuteFunctions.getNode",
         "IExecuteFunctions.getNodeParameter",
+        "IExecuteFunctions.getWorkflow",
         "IExecuteFunctions.logger",
         "INodeExecutionData",
         "INodeType",
@@ -538,7 +542,7 @@
         "loaded": true,
         "configurable": true,
         "executable": true,
-        "validated": false
+        "validated": true
       },
       "knownFailures": [],
       "runtimeType": "@n8n/n8n-nodes-langchain.chainLlm",
@@ -569,7 +573,46 @@
         },
         "adapterAvailable": true
       },
-      "validationEvidence": []
+      "validationEvidence": [
+        {
+          "typeVersion": 1.3,
+          "test": "Basic LLM Chain v1.3 executes with an unconnected optional output parser and a published OpenAI Chat Model",
+          "operation": "run the default LLM chain with an expression prompt and connected OpenAI Chat Model",
+          "contracts": [
+            "IExecuteFunctions",
+            "IExecuteFunctions.getExecutionCancelSignal",
+            "IExecuteFunctions.getExecutionId",
+            "IExecuteFunctions.getInputConnectionData",
+            "IExecuteFunctions.getInputData",
+            "IExecuteFunctions.getNode",
+            "IExecuteFunctions.getNodeParameter",
+            "IExecuteFunctions.getWorkflow",
+            "IExecuteFunctions.logger",
+            "INodeExecutionData",
+            "INodeType"
+          ],
+          "expected": {
+            "status": "succeeded",
+            "output": [
+              {
+                "text": "fixture model response"
+              }
+            ]
+          },
+          "observed": {
+            "status": "succeeded",
+            "output": [
+              {
+                "text": "fixture model response"
+              }
+            ],
+            "binary": [
+              {}
+            ]
+          },
+          "status": "passed"
+        }
+      ]
     },
     {
       "package": "@n8n/n8n-nodes-langchain",
